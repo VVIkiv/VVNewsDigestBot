@@ -1316,7 +1316,6 @@ def start_keep_alive_server():
 # Запускаємо сервер у фоновому потоці
 threading.Thread(target=start_keep_alive_server, daemon=True).start()
 
-
 if __name__ == "__main__":
     import asyncio
     try:
@@ -1561,4 +1560,5 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
+
 
