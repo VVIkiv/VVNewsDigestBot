@@ -17,8 +17,8 @@ print("📁 Поточна директорія:", os.getcwd())
 print("📄 Файли тут:", os.listdir())
 
 # Авторизація а телетон
-#client = TelegramClient('bot_session', API_ID, API_HASH)
-client = TelegramClient('anon', API_ID, API_HASH)
+client = TelegramClient('bot_session', API_ID, API_HASH)
+#client = TelegramClient('anon', API_ID, API_HASH)
 
 
 EntityType = Union[User, Chat, Channel]
@@ -98,4 +98,5 @@ async def get_recent_posts(channel: str, limit: int = 5) -> List[Dict]:
     except Exception as e:
         logging.error(f"Ошибка получения сообщений из канала {channel}: {e}", exc_info=True)
         return []
+
 
