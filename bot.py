@@ -40,6 +40,13 @@ from aiogram.types import (Message, InputMediaPhoto, InputMediaVideo,
                          InlineKeyboardButton, InlineKeyboardMarkup,
                          CallbackQuery)
 from aiogram.filters import Command
+import zipfile, os
+
+if os.path.exists("anon.session.zip"):
+    with zipfile.ZipFile("anon.session.zip", "r") as zip_ref:
+        zip_ref.extractall(".")
+    print("📦 Розпаковано anon.session.zip")
+
 import sqlite3
 import asyncio
 import re
@@ -48,11 +55,6 @@ import io
 import hashlib
 import logging
 import zipfile, os
-if os.path.exists("anon.session.zip"):
-    with zipfile.ZipFile("anon.session.zip", "r") as zip_ref:
-        zip_ref.extractall(".")
-    print("📦 Розпаковано anon.session.zip")
-
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -1567,5 +1569,6 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
+
 
 
