@@ -1,15 +1,9 @@
-import zipfile, os
-
-if os.path.exists("anon.session.zip"):
-    with zipfile.ZipFile("anon.session.zip", "r") as zip_ref:
-        zip_ref.extractall(".")
-    print("📦 Розпаковано anon.session.zip")
-
-from telethon import TelegramClient
+﻿from telethon import TelegramClient
 from telethon.tl.types import User, Chat, Channel
 from config import API_ID, API_HASH
 import os
 import logging
+import zipfile, os
 from typing import List, Dict, Union, Optional
 async def main():
     # старт telethon client, якщо потрібно
@@ -103,4 +97,3 @@ async def get_recent_posts(channel: str, limit: int = 5) -> List[Dict]:
     except Exception as e:
         logging.error(f"Ошибка получения сообщений из канала {channel}: {e}", exc_info=True)
         return []
-

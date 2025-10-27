@@ -35,6 +35,7 @@ def cleanup_media_folder(folder_path="media", max_age_hours=24):
     return removed
 # 2. Імпорти, ініціалізація, логування
 
+from telethon_client import get_recent_posts, client as telethon_client
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (Message, InputMediaPhoto, InputMediaVideo, 
                          InlineKeyboardButton, InlineKeyboardMarkup,
@@ -47,7 +48,6 @@ import os
 import io
 import hashlib
 import logging
-import zipfile, os
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -1562,7 +1562,4 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
-
-
-
 
