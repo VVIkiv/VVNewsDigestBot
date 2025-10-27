@@ -1,0 +1,6 @@
+﻿aiogram==3.3.0
+telethon==1.34.0
+apscheduler==3.10.4
+python-dotenv
+requests
+aiohttp
