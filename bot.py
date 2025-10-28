@@ -1294,7 +1294,32 @@ async def main() -> None:
         scheduler.start()
 
         # Запускаем бота
-        await dp.start_polling(bot)
+       from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
+import os
+
+async def on_startup(bot):
+    webhook_url = os.getenv("WEBHOOK_URL")
+    await bot.set_webhook(webhook_url)
+    print(f"🌐 Webhook встановлено: {webhook_url}")
+
+async def main():
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher()
+
+    # реєстрація всіх хендлерів тут...
+    # dp.message.register(...)
+
+    app = web.Application()
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    setup_application(app, dp, bot=bot)
+
+    await on_startup(bot)
+
+    port = int(os.getenv("PORT", 10000))
+    print(f"🚀 Запуск вебхука на порту {port}")
+    web.run_app(app, host="0.0.0.0", port=port)
+
     except Exception as e:
         logging.error(f"Помилка при запуску бота: {e}")
     finally:
@@ -1563,5 +1588,6 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
+
 
 
