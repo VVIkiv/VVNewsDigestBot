@@ -63,6 +63,7 @@ from db import (
     delete_channel,
     get_channels,              # нова назва замість get_user_channels
     get_categories,
+    get_channels_by_category, 
     add_category,
     delete_category,
     update_channel_category,
@@ -1562,4 +1563,5 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
+
 
