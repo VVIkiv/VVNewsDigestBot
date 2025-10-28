@@ -1320,9 +1320,9 @@ async def main():
     print(f"🚀 Запуск вебхука на порту {port}")
     web.run_app(app, host="0.0.0.0", port=port)
 
-    except Exception as e:
+except Exception as e:
         logging.error(f"Помилка при запуску бота: {e}")
-    finally:
+finally:
         await bot.session.close()
         telethon_client.disconnect()
 
@@ -1588,6 +1588,7 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
+
 
 
 
