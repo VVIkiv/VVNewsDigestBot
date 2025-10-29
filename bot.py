@@ -1510,10 +1510,22 @@ async def run_bot():
         print(f"❌ Помилка: {e}")
     finally:
         await shutdown()
+import os
+from aiohttp import web
+
+# ---------- Кінець файлу bot.py ----------
+
+async def handle(request):
+    return web.Response(text="✅ Bot is running", content_type='text/plain')
+
+# Створюємо фіктивний веб-сервер для Render
+app = web.Application()
+app.router.add_get('/', handle)
+
+# Якщо Render надає свій порт, використовуємо його, інакше локальний 8080
+PORT = int(os.environ.get("PORT", 8080))
+HOST = "0.0.0.0"
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_bot())
-    except Exception as e:
-        print(f"❌ Критична помилка: {e}")
-        sys.exit(1)
+    print(f"🌍 Запуск фіктивного сервера на порту {PORT}")
+    web.run_app(app, host=HOST, port=PORT)
