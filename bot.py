@@ -1512,19 +1512,19 @@ async def run_bot():
         await shutdown()
         
 import os
-from aiohttp import web
+import asyncio
 import logging
+from aiohttp import web
 
 async def handle(request):
     return web.Response(text="✅ Bot is alive", content_type="text/plain")
 
 async def start_keep_alive_server():
-    """Запуск простого HTTP-сервера, щоб Render не заснув."""
+    """Keep-alive сервер для Render"""
     try:
         app = web.Application()
         app.router.add_get("/", handle)
 
-        # Render надає PORT через середовище
         port = int(os.environ.get("PORT", 8080))
         host = "0.0.0.0"
 
@@ -1532,11 +1532,14 @@ async def start_keep_alive_server():
         await web._run_app(app, host=host, port=port)
 
     except OSError as e:
-        logging.warning(f"⚠️ Не вдалося запустити сервер: {e}")
+        logging.warning(f"⚠️ Не вдалося запустити сервер (ймовірно, він уже працює): {e}")
     except Exception as e:
         logging.error(f"❌ Помилка запуску keep-alive сервера: {e}")
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(start_keep_alive_server())
-
+    # Захист від подвійного запуску
+    if os.environ.get("RENDER", "true").lower() == "true":
+        try:
+            asyncio.run(start_keep_alive_server())
+        except RuntimeError:
+            logging.warning("⚙️ Keep-alive сервер уже запущено.")
