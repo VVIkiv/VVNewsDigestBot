@@ -1513,20 +1513,30 @@ async def run_bot():
         
 import os
 from aiohttp import web
+import logging
 
 async def handle(request):
-    return web.Response(text="✅ Bot is running", content_type='text/plain')
+    return web.Response(text="✅ Bot is alive", content_type="text/plain")
 
-app = web.Application()
-app.router.add_get("/", handle)
+async def start_keep_alive_server():
+    """Запуск простого HTTP-сервера, щоб Render не заснув."""
+    try:
+        app = web.Application()
+        app.router.add_get("/", handle)
 
-# Render сам задає порт через змінну середовища
-PORT = int(os.environ.get("PORT", 8080))
-HOST = "0.0.0.0"
+        # Render надає PORT через середовище
+        port = int(os.environ.get("PORT", 8080))
+        host = "0.0.0.0"
 
-print(f"🌍 Keep-alive сервер запущено на порту {PORT}")
+        logging.info(f"🌍 Keep-alive сервер запущено на порту {port}")
+        await web._run_app(app, host=host, port=port)
 
-try:
-    web.run_app(app, host=HOST, port=PORT)
-except OSError as e:
-    print(f"⚠️ Не вдалося запустити сервер на порту {PORT}: {e}")
+    except OSError as e:
+        logging.warning(f"⚠️ Не вдалося запустити сервер: {e}")
+    except Exception as e:
+        logging.error(f"❌ Помилка запуску keep-alive сервера: {e}")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(start_keep_alive_server())
+
