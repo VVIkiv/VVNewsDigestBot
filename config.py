@@ -5,11 +5,26 @@ from dotenv import load_dotenv
 # Завантажує змінні з .env локально (для dev). На Render/Prod використовуються env vars в панелі.
 load_dotenv()
 
-# Bot configuration
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Визначаємо режим роботи
+RUN_MODE = os.getenv("RUN_MODE", "local").lower()
+
+# Вибір токена залежно від режиму
+if RUN_MODE == "render":
+    BOT_TOKEN = os.getenv("RENDER_BOT_TOKEN")
+else:
+    BOT_TOKEN = os.getenv("LOCAL_BOT_TOKEN")
+
+# Перевірка обов'язкових змінних
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не знайдено у змінних середовища.")
+
+# Логуємо який режим використовується
+print(f"🚀 Запуск у режимі: {RUN_MODE.upper()}")
+print(f"🤖 Використовується бот: {BOT_TOKEN[:10]}...")
+
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
-RUN_MODE = os.getenv("RUN_MODE", "local").lower()
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # Database configuration
 def get_db_path():

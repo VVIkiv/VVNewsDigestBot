@@ -49,16 +49,8 @@ if sys.platform == 'win32':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
-from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, F
-
-# Load environment variables
-load_dotenv()
-
-# Get bot token from environment variables
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is not set")
+from config import BOT_TOKEN, RUN_MODE, DB_PATH
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
