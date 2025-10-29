@@ -1513,19 +1513,20 @@ async def run_bot():
 import os
 from aiohttp import web
 
-# ---------- Кінець файлу bot.py ----------
-
+# --- Фіктивний веб-сервер для Render ---
 async def handle(request):
     return web.Response(text="✅ Bot is running", content_type='text/plain')
 
-# Створюємо фіктивний веб-сервер для Render
 app = web.Application()
-app.router.add_get('/', handle)
+app.router.add_get("/", handle)
 
-# Якщо Render надає свій порт, використовуємо його, інакше локальний 8080
-PORT = int(os.environ.get("PORT", 8080))
+# Render надає порт через змінну середовища PORT
+PORT = int(os.environ.get("PORT", 8080))  # 8080 — лише запасний для локального запуску
 HOST = "0.0.0.0"
 
 if __name__ == "__main__":
     print(f"🌍 Запуск фіктивного сервера на порту {PORT}")
-    web.run_app(app, host=HOST, port=PORT)
+    try:
+        web.run_app(app, host=HOST, port=PORT)
+    except OSError as e:
+        print(f"⚠️ Неможливо зайняти порт {PORT}: {e}")
