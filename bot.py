@@ -23,6 +23,8 @@ import http.server
 import socketserver
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiogram import types
 
 # Set console encoding to UTF-8
 if sys.platform == 'win32':
@@ -31,6 +33,7 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
 from datetime import datetime, timedelta
+import hashlib
 
 # 1. Очищення папки media
 
