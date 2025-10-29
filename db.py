@@ -1,11 +1,11 @@
-﻿import os
+import os
 import sqlite3
 import logging
 from typing import Optional
+from config import DB_PATH
 
 # === Конфігурація бази даних ===
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "channels.db")
 
 
 # === Допоміжні функції ===

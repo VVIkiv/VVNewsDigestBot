@@ -65,44 +65,15 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, FSInputFile,
     InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio
 )
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
-
-# Re-export commonly used types for backward compatibility
-InputMedia = InputMediaDocument  # Generic fallback
- 
-# === 1️⃣ Автоматичне визначення середовища ===
-if "/opt/render" in os.getcwd():
-    RUN_MODE = "render"
-else:
-    RUN_MODE = "local"
-print(f"[START] Запуск у режимі: {RUN_MODE}")
-
-# === 2️⃣ Завантаження змінних оточення ===
-if RUN_MODE == "local":
-    from dotenv import load_dotenv
-    load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
-
-if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN не знайдено! Перевір .env або Render Dashboard.")
-
-# === 3️⃣ Вибір шляху до бази даних ===
-if RUN_MODE == "render":
-    DB_PATH = "/data/channels.db"
-else:
-    DB_PATH = os.path.join(os.getcwd(), "channels.db")
 
 # === 4️⃣ Логування ===
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-logging.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
-logging.info(f"📦 Використовується база: {DB_PATH}")
+logger = logging.getLogger(__name__)
+logger.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
+logger.info(f"📦 Використовується база: {os.path.abspath(DB_PATH)}")
 
 # === 5️⃣ Ініціалізація бази даних ===
 def init_db():
@@ -118,8 +89,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-init_db()
-logging.info("✅ База даних готова до роботи.")
+try:
+    from db import init_db
+    init_db()
+    logger.info("✅ База даних успішно ініціалізована.")
+except Exception as e:
+    logger.error(f"❌ Помилка ініціалізації бази даних: {e}")
+    raise
 
 # === 6️⃣ Імпорт решти модулів ===
 from db import (
@@ -153,7 +129,7 @@ scheduler.add_job(
 # Add cleanup for old scheduled digests
 def cleanup_old_digests():
     try:
-        conn = sqlite3.connect("channels.db")
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM sent_posts WHERE sent_at < datetime('now', '-7 days')")
         conn.commit()
