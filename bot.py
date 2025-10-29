@@ -1427,6 +1427,12 @@ async def main():
     """Main application entry point."""
     global runner, site
     
+    # Start Telethon client
+    if not telethon_client.is_connected():
+        logger.info("🔌 Підключення до Telethon...")
+        await telethon_client.start()
+        logger.info("✅ Telethon клієнт підключено")
+    
     # Always ensure webhook is deleted in polling mode
     if RUN_MODE != "render":
         await ensure_webhook_deleted()
