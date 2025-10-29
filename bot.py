@@ -1522,24 +1522,32 @@ async def handle(request):
 async def start_keep_alive_server():
     """Keep-alive сервер для Render"""
     try:
-        app = web.Application()
-        app.router.add_get("/", handle)
-
+        # Render сам дає порт, локально використовуємо 8080
         port = int(os.environ.get("PORT", 8080))
         host = "0.0.0.0"
 
+        app = web.Application()
+        app.router.add_get("/", handle)
+
         logging.info(f"🌍 Keep-alive сервер запущено на порту {port}")
-        await web._run_app(app, host=host, port=port)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, host=host, port=port)
+        await site.start()
+
+        # Не дозволяємо завершитись одразу — тримаємо процес живим
+        while True:
+            await asyncio.sleep(3600)
 
     except OSError as e:
-        logging.warning(f"⚠️ Не вдалося запустити сервер (ймовірно, він уже працює): {e}")
+        logging.warning(f"⚠️ Сервер уже працює або порт зайнятий: {e}")
     except Exception as e:
         logging.error(f"❌ Помилка запуску keep-alive сервера: {e}")
 
 if __name__ == "__main__":
-    # Захист від подвійного запуску
-    if os.environ.get("RENDER", "true").lower() == "true":
-        try:
-            asyncio.run(start_keep_alive_server())
-        except RuntimeError:
-            logging.warning("⚙️ Keep-alive сервер уже запущено.")
+    logging.basicConfig(level=logging.INFO)
+    try:
+        asyncio.run(start_keep_alive_server())
+    except RuntimeError:
+        logging.warning("⚙️ Keep-alive сервер уже активний.")
