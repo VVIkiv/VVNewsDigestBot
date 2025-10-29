@@ -1487,9 +1487,30 @@ async def start_webhook():
     logger.info(f"🚀 Вебхук-сервер запущено на порту {PORT}")
     return runner, site
 
+async def ensure_webhook_deleted():
+    """Ensure webhook is deleted before starting polling."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Вебхук успішно видалено")
+            return True
+        except Exception as e:
+            if "terminated by other getUpdates" in str(e) and attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff
+                logger.warning(f"⚠️ Конфлікт отримання оновлень. Чекаємо {wait_time} секунд... (спроба {attempt + 1}/{max_retries})")
+                await asyncio.sleep(wait_time)
+                continue
+            logger.warning(f"⚠️ Не вдалося видалити вебхук: {e}")
+            return False
+
 async def main():
     """Main application entry point."""
     global runner, site
+    
+    # Always ensure webhook is deleted in polling mode
+    if RUN_MODE != "render":
+        await ensure_webhook_deleted()
     
     if RUN_MODE == "render":
         # Start webhook server
@@ -1502,7 +1523,22 @@ async def main():
     else:
         # Start polling in development mode
         logger.info("🏃‍♂️ Запуск в режимі polling...")
-        await dp.start_polling(bot)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+                break  # If polling starts successfully, exit the retry loop
+            except Exception as e:
+                if "terminated by other getUpdates" in str(e) and attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)  # Exponential backoff
+                    logger.warning(f"⚠️ Конфлікт отримання оновлень. Чекаємо {wait_time} секунд... (спроба {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                    continue
+                logger.error(f"❌ Помилка при запуску polling: {e}")
+                if attempt == max_retries - 1:  # If this was the last attempt
+                    logger.error("❌ Перевищено максимальну кількість спроб. Перевірте, чи не запущено інший екземпляр бота.")
+                    logger.error("ℹ️ Спробуйте виконати команду: taskkill /F /IM python.exe")
+                raise
 
 async def shutdown():
     """Shutdown the application gracefully."""
@@ -1536,14 +1572,20 @@ async def shutdown():
     
     print("✅ Роботу бота завершено")
 
-if __name__ == "__main__":
+async def run_bot():
+    """Run the bot with proper error handling."""
     try:
-        asyncio.run(main())
+        await main()
     except KeyboardInterrupt:
         print("\n🛑 Бот зупинено вручну")
     except Exception as e:
         print(f"❌ Помилка: {e}")
     finally:
-        # Run the shutdown coroutine in the event loop
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(shutdown())
+        await shutdown()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_bot())
+    except Exception as e:
+        print(f"❌ Критична помилка: {e}")
+        sys.exit(1)
