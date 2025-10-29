@@ -99,8 +99,8 @@ except Exception as e:
 from db import (
     add_channel, get_user_channels, delete_channel,
     set_user_digest_settings, get_user_digest_settings,
-    add_sent_post, is_post_sent, get_categories,
-    get_channels_by_category, update_db_structure,
+    add_sent_post, is_post_sent, get_categories, get_channels,
+    get_channels_by_category, update_channel_category, update_db_structure,
     cleanup_old_posts, update_category_name,
     add_category, delete_category
 )
