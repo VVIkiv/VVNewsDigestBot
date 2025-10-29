@@ -1517,12 +1517,12 @@ import logging
 from aiohttp import web
 
 async def handle(request):
-    return web.Response(text="✅ Bot is alive", content_type="text/plain")
+    return web.Response(text="✅ VVNewsDigestBot is running", content_type="text/plain")
 
 async def start_keep_alive_server():
-    """Keep-alive сервер для Render"""
+    """Keep-alive сервер для Render, який не створює конфлікт портів"""
     try:
-        # Render сам дає порт, локально використовуємо 8080
+        # PORT Render встановлює автоматично
         port = int(os.environ.get("PORT", 8080))
         host = "0.0.0.0"
 
@@ -1536,18 +1536,20 @@ async def start_keep_alive_server():
         site = web.TCPSite(runner, host=host, port=port)
         await site.start()
 
-        # Не дозволяємо завершитись одразу — тримаємо процес живим
+        # Основний нескінченний цикл
         while True:
             await asyncio.sleep(3600)
 
     except OSError as e:
-        logging.warning(f"⚠️ Сервер уже працює або порт зайнятий: {e}")
+        logging.warning(f"⚠️ Порт {port} уже зайнятий, сервер не буде перезапущено: {e}")
     except Exception as e:
         logging.error(f"❌ Помилка запуску keep-alive сервера: {e}")
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    try:
-        asyncio.run(start_keep_alive_server())
-    except RuntimeError:
-        logging.warning("⚙️ Keep-alive сервер уже активний.")
+    import sys
+    if os.environ.get("RENDER", "1") == "1" and "gunicorn" not in sys.argv[0]:
+        try:
+            asyncio.run(start_keep_alive_server())
+        except RuntimeError:
+            logging.warning("⚙️ Keep-alive сервер уже запущено.")
+
