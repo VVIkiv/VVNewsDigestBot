@@ -1294,7 +1294,7 @@ async def main() -> None:
         scheduler.start()
 
         # Запускаем бота
-       from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
 import os
 
@@ -1588,6 +1588,7 @@ async def delete_category_handler(message: Message):
         await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
 
 import threading, http.server, socketserver
+
 
 
 
