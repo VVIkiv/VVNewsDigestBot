@@ -11,6 +11,27 @@
 # 10. Запуск бота (main, if __name__ == "__main__")
 # --- Кінець змісту ---
 
+# 2. Імпорти, ініціалізація, логування
+import os
+import sys
+import logging
+import asyncio
+import sqlite3
+import html
+import threading
+import http.server
+import socketserver
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from aiohttp import web
+
+# Set console encoding to UTF-8
+if sys.platform == 'win32':
+    import io
+    import _io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
+from datetime import datetime, timedelta
+
 # 1. Очищення папки media
 
 def cleanup_media_folder(folder_path="media", max_age_hours=24):
@@ -33,24 +54,9 @@ def cleanup_media_folder(folder_path="media", max_age_hours=24):
     if removed > 0:
         logging.info(f"Очищено {removed} старих файлів з папки media")
     return removed
-# 2. Імпорти, ініціалізація, логування
-import os
-import sys
-import logging
-import asyncio
-import sqlite3
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-# Set console encoding to UTF-8
-if sys.platform == 'win32':
-    import io
-    import _io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
-from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Union
 from aiogram import Bot, Dispatcher, F
-from config import BOT_TOKEN, RUN_MODE, DB_PATH
+from config import BOT_TOKEN, RUN_MODE, DB_PATH, PORT, WEBHOOK_URL
 from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -1303,50 +1309,6 @@ async def main() -> None:
     except Exception as e:
         logger.error(f"Помилка при налаштуванні завдань розсилки: {e}")
 
-    # Налаштовуємо вебхук або пулінг в залежності від режиму
-    if RUN_MODE == "render":
-        # Webhook mode for production
-        from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-        
-        app = web.Application()
-        dp.include_router(dp)
-        setup_application(app, dp, bot=bot)
-        
-        # Register webhook handler
-        webhook_path = f'/webhook/{BOT_TOKEN}'
-        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
-        
-        # Set webhook URL
-        webhook_url = os.getenv('WEBHOOK_URL')
-        if webhook_url:
-            await bot.set_webhook(webhook_url + webhook_path)
-import asyncio
-import logging
-import html
-import threading
-import http.server
-import socketserver
-import time
-from aiohttp import web, web_runner
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from aiogram.exceptions import TelegramBadRequest
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from db import get_channels, get_categories, get_user_digest_settings, set_user_digest_settings, init_db
-
-API_TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://vvnewsdigestbot.onrender.com/webhook")
-PORT = int(os.getenv("PORT", 10000))
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
-try:
-    init_db()
-    logger.info("✅ База даних готова до роботи.")
-except Exception as e:
-    logger.exception(f"Помилка ініціалізації бази даних: {e}")
-
 # --- KEEP ALIVE SERVER ДЛЯ RENDER ---
 def start_keep_alive_server():
     def _serve():
@@ -1357,17 +1319,6 @@ def start_keep_alive_server():
     threading.Thread(target=_serve, daemon=True).start()
 
 start_keep_alive_server()
-
-# Ініціалізація бота
-try:
-    bot = Bot(token=API_TOKEN)
-    dp = Dispatcher()
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger(__name__)
-    logger.info("Бот успішно ініціалізовано")
-except Exception as e:
-    logging.error(f"Помилка при ініціалізації бота: {e}")
-    sys.exit(1)
 
 # Функція для безпечного відправлення повідомлень
 async def safe_send(chat_id: int, text: str, reply_markup=None):
@@ -1387,7 +1338,7 @@ async def safe_edit(chat_id: int, message_id: int, text: str, reply_markup=None)
 
 # --- Основні callback-и ---
 @dp.callback_query(lambda c: c.data == "list_channels")
-async def inline_list_channels(cb: types.CallbackQuery):
+async def inline_list_channels(cb: CallbackQuery):
     channels = get_channels(cb.from_user.id)
     categories = get_categories()
     keyboard_buttons = []

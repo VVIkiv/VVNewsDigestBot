@@ -1,27 +1,40 @@
 # config.py
 import os
+import sys
 from dotenv import load_dotenv
 
-# Завантажує змінні з .env локально (для dev). На Render/Prod використовуються env vars в панелі.
-load_dotenv()
+# For local development, load from .env file
+if os.path.exists('.env'):
+    load_dotenv()
 
-# Визначаємо режим роботи
-RUN_MODE = os.getenv("RUN_MODE", "local").lower()
+# Determine run mode (default to 'local' if not set)
+RUN_MODE = os.getenv('RUN_MODE', 'local').lower()
 
-# Вибір токена залежно від режиму
-if RUN_MODE == "render":
-    BOT_TOKEN = os.getenv("RENDER_BOT_TOKEN")
-else:
-    BOT_TOKEN = os.getenv("LOCAL_BOT_TOKEN")
+# Print environment info for debugging
+print(f"⚙️  Environment: {RUN_MODE.upper()}")
+print(f"📁 Current directory: {os.getcwd()}")
+print(f"📄 .env exists: {os.path.exists('.env')}")
 
-# Перевірка обов'язкових змінних
+# Select token based on run mode
+token_var = 'RENDER_BOT_TOKEN' if RUN_MODE == 'render' else 'LOCAL_BOT_TOKEN'
+BOT_TOKEN = os.getenv(token_var)
+
+# Check for required variables
 if not BOT_TOKEN:
-    raise ValueError("❌ BOT_TOKEN не знайдено у змінних середовища.")
+    error_msg = f"❌ {token_var} не знайдено у змінних середовища. "
+    error_msg += f"Поточний каталог: {os.getcwd()}"
+    print("\n=== Доступні змінні середовища ===")
+    for k, v in os.environ.items():
+        if any(x in k.lower() for x in ['token', 'api', 'mode']):
+            print(f"{k}: {'*' * 8 + v[-4:] if 'token' in k.lower() else v}")
+    print("===============================\n")
+    raise ValueError(error_msg)
 
-# Логуємо який режим використовується
-print(f"🚀 Запуск у режимі: {RUN_MODE.upper()}")
-print(f"🤖 Використовується бот: {BOT_TOKEN[:10]}...")
+# Log which bot is being used (only show first and last 4 chars for security)
+token_display = f"{BOT_TOKEN[:4]}...{BOT_TOKEN[-4:]}" if BOT_TOKEN else "NOT FOUND"
+print(f"🤖 Використовується бот: {token_display}")
 
+# Other required environment variables
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
