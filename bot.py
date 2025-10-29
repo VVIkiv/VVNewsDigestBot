@@ -1510,23 +1510,23 @@ async def run_bot():
         print(f"❌ Помилка: {e}")
     finally:
         await shutdown()
+        
 import os
 from aiohttp import web
 
-# --- Фіктивний веб-сервер для Render ---
 async def handle(request):
     return web.Response(text="✅ Bot is running", content_type='text/plain')
 
 app = web.Application()
 app.router.add_get("/", handle)
 
-# Render надає порт через змінну середовища PORT
-PORT = int(os.environ.get("PORT", 8080))  # 8080 — лише запасний для локального запуску
+# Render сам задає порт через змінну середовища
+PORT = int(os.environ.get("PORT", 8080))
 HOST = "0.0.0.0"
 
-if __name__ == "__main__":
-    print(f"🌍 Запуск фіктивного сервера на порту {PORT}")
-    try:
-        web.run_app(app, host=HOST, port=PORT)
-    except OSError as e:
-        print(f"⚠️ Неможливо зайняти порт {PORT}: {e}")
+print(f"🌍 Keep-alive сервер запущено на порту {PORT}")
+
+try:
+    web.run_app(app, host=HOST, port=PORT)
+except OSError as e:
+    print(f"⚠️ Не вдалося запустити сервер на порту {PORT}: {e}")
