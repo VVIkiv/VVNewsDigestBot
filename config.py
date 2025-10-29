@@ -7,13 +7,34 @@ from dotenv import load_dotenv
 if os.path.exists('.env'):
     load_dotenv()
 
-# Determine run mode (default to 'local' if not set)
-RUN_MODE = os.getenv('RUN_MODE', 'local').lower()
+# Auto-detect environment based on Render-specific indicators
+def detect_environment():
+    """Automatically detect if running on Render or locally."""
+    # Render sets these environment variables automatically
+    if os.getenv('RENDER'):
+        return 'render'
+    if os.getenv('RENDER_SERVICE_NAME'):
+        return 'render'
+    if os.path.exists('/opt/render'):
+        return 'render'
+    # Check for PORT environment variable (common in cloud deployments)
+    if os.getenv('PORT') and not os.path.exists('.env'):
+        return 'render'
+    return 'local'
+
+# Determine run mode (auto-detect or use manual override)
+manual_mode = os.getenv('RUN_MODE')
+auto_detected = detect_environment()
+RUN_MODE = (manual_mode or auto_detected).lower()
 
 # Print environment info for debugging
-print(f"⚙️  Environment: {RUN_MODE.upper()}")
+if manual_mode:
+    print(f"⚙️  Environment: {RUN_MODE.upper()} (manually set)")
+else:
+    print(f"⚙️  Environment: {RUN_MODE.upper()} (auto-detected)")
 print(f"📁 Current directory: {os.getcwd()}")
 print(f"📄 .env exists: {os.path.exists('.env')}")
+print(f"🔍 Render detected: {os.path.exists('/opt/render') or bool(os.getenv('RENDER'))}")
 
 # Select token based on run mode
 token_var = 'RENDER_BOT_TOKEN' if RUN_MODE == 'render' else 'LOCAL_BOT_TOKEN'
