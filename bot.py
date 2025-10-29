@@ -1,4 +1,4 @@
-﻿# --- ЗМІСТ ФАЙЛУ (TOC) ---
+# --- ЗМІСТ ФАЙЛУ (TOC) ---
 # 1. Очищення папки media
 # 2. Імпорти, ініціалізація, логування
 # 3. Допоміжні функції (escape_markdown, escape_markdown_v2, create_post_hash, is_similar_news тощо)
@@ -34,104 +34,141 @@ def cleanup_media_folder(folder_path="media", max_age_hours=24):
         logging.info(f"Очищено {removed} старих файлів з папки media")
     return removed
 # 2. Імпорти, ініціалізація, логування
-
-from telethon_client import get_recent_posts, client as telethon_client
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import (Message, InputMediaPhoto, InputMediaVideo, 
-                         InlineKeyboardButton, InlineKeyboardMarkup,
-                         CallbackQuery)
-from aiogram.filters import Command
-import sqlite3
-import asyncio
-import re
 import os
-import io
-import hashlib
-import logging
-from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict
-from aiogram.types.input_file import BufferedInputFile
-from aiogram.exceptions import TelegramBadRequest
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-from config import BOT_TOKEN
-from db import (
-    add_channel,
-    delete_channel,
-    get_channels,              # нова назва замість get_user_channels
-    get_categories,
-    get_channels_by_category, 
-    add_category,
-    delete_category,
-    update_channel_category,
-    update_category_name,
-    get_user_digest_settings,
-    set_user_digest_settings,
-    add_sent_post,
-    is_post_sent,
-    cleanup_old_posts,
-    init_db                    # цього достатньо, update_db_structure більше не потрібна
-)
-
-# === ІНІЦІАЛІЗАЦІЯ БАЗИ ТА ПЕРЕВІРКА ===
-print("🗃️ Ініціалізація бази даних...")
-try:
-    init_db()
-    from db import get_categories, get_channels
-
-    categories = get_categories()
-    total_categories = len(categories)
-    print(f"✅ База даних готова. Категорій: {total_categories}")
-
-    # Опціонально: підрахунок загальної кількості каналів
-    import sqlite3
-    from db import DB_PATH
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM channels")
-    total_channels = cursor.fetchone()[0]
-    conn.close()
-
-    print(f"📡 У базі збережено каналів: {total_channels}")
-
-except Exception as e:
-    print(f"❌ Помилка ініціалізації бази: {e}")
-
-
-# --- Ініціалізація бази при старті ---
-print("🗃️ Ініціалізація бази даних...")
-init_db()
-print("✅ База даних готова до роботи.")
-# --- Ініціалізація бази при старті ---
-print("🗃️ Ініціалізація бази даних...")
-init_db()
-print("✅ База даних готова до роботи.")
-from telethon_client import get_recent_posts, client as telethon_client
-from summarizer import summarize
-
 import sys
+import logging
+import asyncio
+import sqlite3
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# Set console encoding to UTF-8
+if sys.platform == 'win32':
+    import io
+    import _io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any, Union
+from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, F
+
+# Load environment variables
+load_dotenv()
+
+# Get bot token from environment variables
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is not set")
+from aiogram.filters import Command, CommandStart, CommandObject
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, FSInputFile,
+    InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio
+)
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
-# Настройка логирования
-def setup_logging():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-# 3. Допоміжні функції (escape_markdown, escape_markdown_v2, create_post_hash, is_similar_news тощо)
+# Re-export commonly used types for backward compatibility
+InputMedia = InputMediaDocument  # Generic fallback
+ 
+# === 1️⃣ Автоматичне визначення середовища ===
+if "/opt/render" in os.getcwd():
+    RUN_MODE = "render"
+else:
+    RUN_MODE = "local"
+print(f"[START] Запуск у режимі: {RUN_MODE}")
 
-# Инициализация
+# === 2️⃣ Завантаження змінних оточення ===
+if RUN_MODE == "local":
+    from dotenv import load_dotenv
+    load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не знайдено! Перевір .env або Render Dashboard.")
+
+# === 3️⃣ Вибір шляху до бази даних ===
+if RUN_MODE == "render":
+    DB_PATH = "/data/channels.db"
+else:
+    DB_PATH = os.path.join(os.getcwd(), "channels.db")
+
+# === 4️⃣ Логування ===
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logging.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
+logging.info(f"📦 Використовується база: {DB_PATH}")
+
+# === 5️⃣ Ініціалізація бази даних ===
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE,
+            category TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+logging.info("✅ База даних готова до роботи.")
+
+# === 6️⃣ Імпорт решти модулів ===
+from db import (
+    add_channel, get_user_channels, delete_channel,
+    set_user_digest_settings, get_user_digest_settings,
+    add_sent_post, is_post_sent, get_categories,
+    get_channels_by_category, update_db_structure,
+    cleanup_old_posts, update_category_name,
+    add_category, delete_category
+)
+
+from telethon_client import get_recent_posts, client as telethon_client
+
+# === 7️⃣ Ініціалізація Telegram-бота ===
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# Initialize scheduler
 scheduler = AsyncIOScheduler()
+
+# Add cleanup job
+scheduler.add_job(
+    cleanup_old_posts,
+    'interval',
+    hours=1,
+    id='cleanup_job',
+    replace_existing=True,
+    next_run_time=datetime.now() + timedelta(seconds=10)  # Run first cleanup 10 seconds after start
+)
+
+# Add cleanup for old scheduled digests
+def cleanup_old_digests():
+    try:
+        conn = sqlite3.connect("channels.db")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sent_posts WHERE sent_at < datetime('now', '-7 days')")
+        conn.commit()
+        conn.close()
+        logging.info("Очищено застарілі пости з бази даних")
+    except Exception as e:
+        logging.error(f"Помилка при очищенні застарілих постів: {e}")
+
+scheduler.add_job(
+    cleanup_old_digests,
+    'interval',
+    days=1,  # Run daily
+    id='cleanup_old_digests',
+    replace_existing=True
+)
 
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
@@ -146,11 +183,11 @@ def escape_markdown_v2(text):
         result = result.replace(char, f'\\{char}')
     return result
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+# 4. Обробники команд (start, help, addchannel, listchannels, deletechannel, addcategory, delcategory)
 
 # 4. Обробники команд (start, help, addchannel, listchannels, deletechannel, addcategory, delcategory)
 
-@dp.message(Command("start"))
+@dp.message(CommandStart())
 async def start_handler(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -172,7 +209,7 @@ async def start_handler(message: Message):
 
 # Добавим обработчик для кнопки "Допомога"
 @dp.callback_query(lambda c: c.data == "help")
-async def inline_help(callback: types.CallbackQuery):
+async def inline_help(callback: CallbackQuery):
     help_text = """🤖 *Допомога з командами бота:*
 
 📝 *Основні команди:*
@@ -236,7 +273,7 @@ async def help_handler(message: Message):
 /delcategory id_категорії — видалити категорію""")
 
 @dp.message(Command("addchannel"))
-async def add_channel_handler(message: Message):
+async def add_channel_handler(message: Message, command: CommandObject):
     if not message.text:
         await message.answer("❌ Формат: /addchannel @назва_каналу [категорія]")
         return
@@ -337,7 +374,7 @@ async def list_channels_handler(message: Message):
     await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
 
 @dp.message(Command("deletechannel"))
-async def delete_channel_handler(message: Message):
+async def delete_channel_handler(message: Message, command: CommandObject):
     if not message.text:
         await message.answer("❌ Формат: /deletechannel @назва_каналу")
         return
@@ -685,7 +722,7 @@ def remove_user_digest_job(scheduler, user_id):
         user_digest_jobs.pop(job_id, None)
 
 @dp.message(Command("setdigest"))
-async def setdigest_handler(message: Message):
+async def setdigest_handler(message: Message, command: CommandObject):
     if not message.text:
         await message.answer("❌ Формат: /setdigest [on/off/2h/3h/…]")
         return
@@ -719,7 +756,7 @@ async def setdigest_handler(message: Message):
         await message.answer("❌ Неправильне значення. Спробуйте /setdigest 3h або /setdigest off")
 
 @dp.callback_query(lambda c: c.data == "select_digest_categories")
-async def select_digest_categories(callback: types.CallbackQuery):
+async def select_digest_categories(callback: CallbackQuery):
     """Меню вибору категорій для автодайджесту"""
     if callback.from_user is None:
         return
@@ -768,7 +805,7 @@ async def select_digest_categories(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("toggle_digest_category_"))
-async def toggle_digest_category(callback: types.CallbackQuery):
+async def toggle_digest_category(callback: CallbackQuery):
     """Включення/виключення категорії"""
     if callback.from_user is None:
         return
@@ -808,7 +845,7 @@ async def toggle_digest_category(callback: types.CallbackQuery):
         await callback.answer("❌ Помилка зміни налаштувань", show_alert=True)
     
 @dp.callback_query(lambda c: c.data == "list_channels")
-async def inline_list_channels(cb: types.CallbackQuery):
+async def inline_list_channels(cb: CallbackQuery):
     channels = get_channels(cb.from_user.id)
     categories_list = get_categories()
     
@@ -899,7 +936,7 @@ async def inline_list_channels(cb: types.CallbackQuery):
     await cb.answer()
 
 @dp.callback_query(lambda c: c.data == "back_to_main")
-async def back_to_main(callback: types.CallbackQuery):
+async def back_to_main(callback: CallbackQuery):
     """Возврат в главное меню"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -926,7 +963,7 @@ async def back_to_main(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "add_channel")
-async def inline_add_channel(callback: types.CallbackQuery):
+async def inline_add_channel(callback: CallbackQuery):
     """Показ списка категорій для добавления канала"""
     categories = get_categories()
     keyboard_buttons = []
@@ -959,7 +996,7 @@ async def inline_add_channel(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("delete_channel_"))
-async def delete_channel_button(callback: types.CallbackQuery):
+async def delete_channel_button(callback: CallbackQuery):
     """Удаление канала по кнопке"""
     if callback.data is None:
         await callback.answer("❌ Помилка: не вдалося визначити канал.", show_alert=True)
@@ -973,7 +1010,7 @@ async def delete_channel_button(callback: types.CallbackQuery):
         await callback.answer(f"❌ Помилка видалення каналу @{channel}", show_alert=True)
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("select_category_"))
-async def category_selected(callback: types.CallbackQuery):
+async def category_selected(callback: CallbackQuery):
     """Обработка выбора категории при добавлении канала"""
     if not callback.data:
         await callback.answer("❌ Помилка: не вдалося визначити категорію.", show_alert=True)
@@ -1016,7 +1053,7 @@ async def category_selected(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "digest")
-async def inline_digest(callback: types.CallbackQuery):
+async def inline_digest(callback: CallbackQuery):
     """Обработка кнопки дайджеста"""
     categories = get_categories()
     keyboard_buttons = []
@@ -1060,13 +1097,13 @@ async def inline_digest(callback: types.CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "digest_all")
-async def digest_all(callback: types.CallbackQuery):
+async def digest_all(callback: CallbackQuery):
     """Отправка полного дайджеста"""
     await callback.answer("⏳ Збираю дайджест...", show_alert=True)
     await send_digest_to_user(callback.from_user.id)
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("digest_category_"))
-async def digest_category(callback: types.CallbackQuery):
+async def digest_category(callback: CallbackQuery):
     """Отправка дайджета по категории"""
     try:
         if not callback.data:
@@ -1096,7 +1133,7 @@ async def digest_category(callback: types.CallbackQuery):
         logging.error(f"Помилка отримання дайджесту по категорії: {e}")
         await callback.answer("❌ Помилка отримання дайджесту", show_alert=True)
 @dp.callback_query(lambda c: c.data == "settings")
-async def settings_menu(callback: types.CallbackQuery):
+async def settings_menu(callback: CallbackQuery):
     user_settings = get_user_digest_settings(callback.from_user.id)
     threshold = user_settings.get('similarity_threshold', 0.7)
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1156,7 +1193,7 @@ async def settings_menu(callback: types.CallbackQuery):
 
 # --- Обробник для зміни інтервалу розсилки через меню ---
 @dp.callback_query(lambda c: c.data and c.data.startswith("set_interval_"))
-async def set_interval_callback(callback: types.CallbackQuery):
+async def set_interval_callback(callback: CallbackQuery):
     if not callback.data:
         await callback.answer("❌ Помилка: не вдалося визначити інтервал.", show_alert=True)
         return
@@ -1173,7 +1210,7 @@ async def set_interval_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Помилка при встановленні інтервалу.", show_alert=True)
 
 @dp.callback_query(lambda c: c.data == "set_threshold")
-async def set_threshold_menu(callback: types.CallbackQuery):
+async def set_threshold_menu(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="60%", callback_data="threshold_0.6"),
          InlineKeyboardButton(text="70%", callback_data="threshold_0.7"),
@@ -1188,7 +1225,7 @@ async def set_threshold_menu(callback: types.CallbackQuery):
         )
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("threshold_"))
-async def set_threshold_value(callback: types.CallbackQuery):
+async def set_threshold_value(callback: CallbackQuery):
     if not callback.data:
         await callback.answer("❌ Помилка: не вдалося визначити поріг.", show_alert=True)
         return
@@ -1251,345 +1288,262 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
     except Exception as e:
         logging.error(f"Failed to send media {media_path}: {e}")
         return False
+
 async def main() -> None:
-    # Настраиваем логирование
-    setup_logging()
-    logging.info("Запуск бота...")
+    """
+    Основна функція для запуску бота.
+    Обробляє як вебхук, так і полінг режими.
+    """
+    # Налаштовуємо логування
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Запуск бота...")
     
-    # Очищення старих постів
+    # Очищення старих постів при запуску
     cleanup_old_posts()
     
-    # Запускаем Telethon клиент
+    # Запускаємо Telethon клієнт
     try:
         await telethon_client.connect()
         if not await telethon_client.is_user_authorized():
-            logging.error("Telethon не авторизован!")
+            logger.error("Telethon не авторизовано!")
             return
         me = await telethon_client.get_me()
-        logging.info(f"Telethon успішно авторизований як {getattr(me, 'username', None) or getattr(me, 'first_name', None) or getattr(me, 'user_id', None)}")
+        logger.info(f"Telethon успішно авторизовано як {getattr(me, 'username', None) or getattr(me, 'first_name', None) or me.id}")
     except Exception as e:
-        logging.error(f"Помилка при запуску Telethon: {e}")
+        logger.error(f"Помилка при запуску Telethon: {e}")
         return
-    # 9. Планувальник, очищення історії, медіа
 
-    # --- Додаємо запуск задач розсилки для всіх користувачів ---
-    conn = sqlite3.connect("channels.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, enabled, interval_hours FROM user_settings WHERE enabled = 1")
-    for user_id, enabled, interval_hours in cursor.fetchall():
-        if enabled and interval_hours:
-            schedule_user_digest(scheduler, user_id, interval_hours)
-    conn.close()
-    # Настраиваем планировщик
-    # scheduler.add_job(
-    #     send_digest_to_all_users,
-    #     trigger='cron',
-    #     hour='*',
-    #     minute=0,
-    #     id='hourly_digest'
-    # )
-    
-    try:
-        # Запускаем планировщик
+    # Запускаємо планувальник, якщо він ще не запущений
+    if not scheduler.running:
         scheduler.start()
+        logger.info("Планувальник запущено")
 
-        # Запускаем бота
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
-from aiohttp import web
-import os
+    # Додаємо завдання розсилки для всіх користувачів
+    try:
+        conn = sqlite3.connect("channels.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, enabled, interval_hours FROM user_settings WHERE enabled = 1")
+        for user_id, enabled, interval_hours in cursor.fetchall():
+            if enabled and interval_hours:
+                schedule_user_digest(scheduler, user_id, interval_hours)
+                logger.info(f"Налаштовано розсилку для користувача {user_id} з інтервалом {interval_hours} годин")
+        conn.close()
+    except Exception as e:
+        logger.error(f"Помилка при налаштуванні завдань розсилки: {e}")
 
-async def on_startup(bot):
-    webhook_url = os.getenv("WEBHOOK_URL")
-    await bot.set_webhook(webhook_url)
-    print(f"🌐 Webhook встановлено: {webhook_url}")
-
-async def main():
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
-
-    # реєстрація всіх хендлерів тут...
-    # dp.message.register(...)
-
-    app = web.Application()
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
-    setup_application(app, dp, bot=bot)
-
-    await on_startup(bot)
-
-    port = int(os.getenv("PORT", 10000))
-    print(f"🚀 Запуск вебхука на порту {port}")
-    web.run_app(app, host="0.0.0.0", port=port)
-
-except Exception as e:
-        logging.error(f"Помилка при запуску бота: {e}")
-finally:
-        await bot.session.close()
-        telethon_client.disconnect()
-
-# === KEEP-ALIVE ДЛЯ RENDER ===
+    # Налаштовуємо вебхук або пулінг в залежності від режиму
+    if RUN_MODE == "render":
+        # Webhook mode for production
+        from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+        
+        app = web.Application()
+        dp.include_router(dp)
+        setup_application(app, dp, bot=bot)
+        
+        # Register webhook handler
+        webhook_path = f'/webhook/{BOT_TOKEN}'
+        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=webhook_path)
+        
+        # Set webhook URL
+        webhook_url = os.getenv('WEBHOOK_URL')
+        if webhook_url:
+            await bot.set_webhook(webhook_url + webhook_path)
+import asyncio
+import logging
+import html
 import threading
 import http.server
 import socketserver
-import os
+import time
+from aiohttp import web, web_runner
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from db import get_channels, get_categories, get_user_digest_settings, set_user_digest_settings, init_db
 
+API_TOKEN = os.getenv("BOT_TOKEN") or os.getenv("TELEGRAM_BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://vvnewsdigestbot.onrender.com/webhook")
+PORT = int(os.getenv("PORT", 10000))
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+try:
+    init_db()
+    logger.info("✅ База даних готова до роботи.")
+except Exception as e:
+    logger.exception(f"Помилка ініціалізації бази даних: {e}")
+
+# --- KEEP ALIVE SERVER ДЛЯ RENDER ---
 def start_keep_alive_server():
-    """Запускає простий HTTP-сервер, щоб Render бачив відкритий порт."""
-    port = int(os.environ.get("PORT", 10000))
-    handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", port), handler) as httpd:
-        print(f"🌍 Фіктивний сервер запущено на порту {port}")
-        httpd.serve_forever()
+    def _serve():
+        handler = http.server.SimpleHTTPRequestHandler
+        with socketserver.TCPServer(("", PORT), handler) as httpd:
+            logger.info(f"🌍 Keep-alive сервер запущено на порту {PORT}")
+            httpd.serve_forever()
+    threading.Thread(target=_serve, daemon=True).start()
 
-# Запускаємо сервер у фоновому потоці
-threading.Thread(target=start_keep_alive_server, daemon=True).start()
+start_keep_alive_server()
 
+# Ініціалізація бота
+try:
+    bot = Bot(token=API_TOKEN)
+    dp = Dispatcher()
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    logger.info("Бот успішно ініціалізовано")
+except Exception as e:
+    logging.error(f"Помилка при ініціалізації бота: {e}")
+    sys.exit(1)
 
-if __name__ == "__main__":
-    import asyncio
+# Функція для безпечного відправлення повідомлень
+async def safe_send(chat_id: int, text: str, reply_markup=None):
     try:
-        import sys
-        if sys.version_info >= (3, 7):
-            asyncio.run(main())
-        else:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        logging.info("Бот остановлен пользователем")
+        return await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode="HTML")
     except Exception as e:
-        logging.error(f"Критична помилка: {e}", exc_info=True)
+        logging.error(f"Помилка при відправленні повідомлення: {e}")
+        return None
 
-from telethon_client import client, download_media  # Add this import at the top of your file or before this function
-
-async def get_recent_posts(channel: str, limit: int = 5) -> List[Dict]:
-    channel_name = None
+# Функція для безпечного редагування повідомлень
+async def safe_edit(chat_id: int, message_id: int, text: str, reply_markup=None):
     try:
-        if not channel or len(channel) <= 1:
-            logging.error(f"Некорректное имя канала: {channel}")
-            return []
-            
-        clean_channel = channel.lstrip('@')
-        channel_name = f"@{clean_channel}"
-        
-        logging.info(f"Получаем посты из канала: {channel_name}")
-        
-        messages = []
-        logging.info(f"Начинаем получение сообщений из канала {channel_name}")
-        
-        async for message in client.iter_messages(channel_name, limit=limit):
-            logging.info(f"Получено сообщение из канала {channel_name}: {message.id}")
-            if not message:
-                continue
-
-            # Пропускаем служебные сообщения
-            if hasattr(message, 'action'):
-                continue
-
-            post_url = f"https://t.me/{clean_channel}/{message.id}"
-
-            # Получаем текст сообщения
-            text = ""
-            if hasattr(message, 'message'):  # Сначала проверяем атрибут message
-                text = message.message
-            elif hasattr(message, 'text'):   # Затем проверяем text
-                text = message.text
-            elif hasattr(message, 'raw_text'): # И наконец raw_text
-                text = message.raw_text
-            
-            text = text or ''  # Если все атрибуты отсутствуют, используем пустую строку
-
-            # Обрабатываем медиафайлы
-            media_path = None
-            if hasattr(message, 'media') and message.media:
-                try:
-                    media_path = await download_media(message)
-                except Exception as e:
-                    logging.error(f"Ошибка загрузки медиа из {channel_name}: {e}")
-
-            if not text and not media_path:
-                continue
-
-            messages.append({
-                "text": text,
-                "media": media_path,
-                "url": post_url,
-                "date": message.date
-            })
-            
-        logging.info(f"Получено {len(messages)} постов из канала {channel_name}")
-        return messages
-            
+        return await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=reply_markup, parse_mode="HTML")
     except Exception as e:
-        logging.error(f"Ошибка получения сообщений из {channel_name}: {e}")
-        return []
+        logging.error(f"Помилка при редагуванні повідомлення: {e}")
+        return None
 
-def is_post_sent(user_id: int, post_hash: str) -> bool:
-    """Проверяет, был ли пост уже отправлен пользователю"""
-    conn = sqlite3.connect("channels.db")
-    cursor = conn.cursor()
-    
-    # Добавьте логирование
-    logging.info(f"Проверяем отправку поста {post_hash} пользователю {user_id}")
-    
-    cursor.execute(
-        "SELECT COUNT(*) FROM sent_posts WHERE user_id = ? AND post_hash = ?",
-        (user_id, post_hash)
-    )
-    count = cursor.fetchone()[0]
-    conn.close()
-    
-    # Логируем результат
-    if count > 0:
-        logging.info(f"Пост {post_hash} уже был отправлен пользователю {user_id}")
-    
-    return count > 0
-
-def cleanup_sent_posts():
-    """Удаляет старые записи из таблицы sent_posts"""
-    conn = sqlite3.connect("channels.db")
-    cursor = conn.cursor()
-    
-    # Удаляем записи старше 2 дней
-    cursor.execute("DELETE FROM sent_posts WHERE timestamp < datetime('now', '-2 days')")
-    conn.commit()
-    conn.close()
-    
-    logging.info("Очистка старых записей в sent_posts завершена")
-
-# Планувальник для очищення старих записів і медіа
-scheduler = AsyncIOScheduler()
-scheduler.add_job(
-    cleanup_sent_posts,
-    trigger='interval',
-    days=1,  # Запускати раз на добу
-    misfire_grace_time=15
-)
-scheduler.add_job(
-    cleanup_media_folder,
-    trigger='interval',
-    days=1,  # Запускати раз на добу
-    misfire_grace_time=15
-)
-async def main():
-    scheduler.start()
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-@dp.callback_query(lambda c: c.data == "edit_category_name")
-async def edit_category_name_menu(callback: types.CallbackQuery):
+# --- Основні callback-и ---
+@dp.callback_query(lambda c: c.data == "list_channels")
+async def inline_list_channels(cb: types.CallbackQuery):
+    channels = get_channels(cb.from_user.id)
     categories = get_categories()
     keyboard_buttons = []
+
+    if not channels:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Додати канал", callback_data="add_channel")],
+            [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
+        ])
+        await safe_edit(cb.message.chat.id, cb.message.message_id, "🔍 У вас ще немає доданих каналів.<br><br>Натисніть <b>«Додати канал»</b>.", keyboard)
+        await cb.answer()
+        return
+
+    text = "<b>📋 Ваші канали по категоріях:</b><br><br>"
+    grouped = {}
+    for channel, category in channels:
+        grouped.setdefault(category or "Без категорії", []).append(channel)
+
+    for category, ch_list in grouped.items():
+        text += f"📑 <b>{html.escape(category)}</b>:<br>"
+        for ch in ch_list:
+            text += f"• @{html.escape(ch)}<br>"
+            keyboard_buttons.append([
+                InlineKeyboardButton(text=f"❌ Видалити @{ch}", callback_data=f"delete_channel_{ch}"),
+                InlineKeyboardButton(text=f"📋 Перемістити @{ch}", callback_data=f"move_channel_{ch}")
+            ])
+        text += "<br>"
+
+    text += "<b>🗂 Категорії:</b><br>"
     for cat_id, cat_name in categories:
+        text += f"• {cat_id}: {html.escape(cat_name)}<br>"
         keyboard_buttons.append([
-            InlineKeyboardButton(text=f"✏️ {cat_name}", callback_data=f"edit_category_{cat_id}")
+            InlineKeyboardButton(text=f"✏️ Змінити '{cat_name}'", callback_data=f"edit_category_{cat_id}")
         ])
-    keyboard_buttons.append([
-        InlineKeyboardButton(text="« Назад", callback_data="settings")
-    ])
+
+    keyboard_buttons.append([InlineKeyboardButton(text="« Назад", callback_data="back_to_main")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-    text = "*Виберіть категорію для зміни назви:*"
-    if callback.message:
-        await bot.edit_message_text(
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=keyboard
-        )
+
+    if cb.message:
+        await safe_edit(cb.message.chat.id, cb.message.message_id, text, keyboard)
     else:
-        await bot.send_message(
-            chat_id=callback.from_user.id,
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=keyboard
-        )
-    await callback.answer()
+        await safe_send(cb.from_user.id, text, keyboard)
+    await cb.answer()
 
-class CategoryEdit(StatesGroup):
-    waiting_for_new_name = State()
+# --- WEBHOOK ---
+async def on_startup(bot):
+    await bot.set_webhook(WEBHOOK_URL)
+    logger.info(f"🌐 Вебхук встановлено: {WEBHOOK_URL}")
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("edit_category_"))
-async def ask_new_category_name(callback: types.CallbackQuery, state: FSMContext):
-    if not callback.data:
-        await callback.answer("❌ Не вдалося визначити категорію.", show_alert=True)
-        return
+async def on_shutdown(bot):
+    await bot.delete_webhook()
+    logger.info("🧹 Вебхук видалено.")
+
+async def start_webhook():
+    """Start the webhook server."""
+    app = web.Application()
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    setup_application(app, dp, bot=bot)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    
+    logger.info(f"🚀 Вебхук-сервер запущено на порту {PORT}")
+    return runner, site
+
+async def main():
+    """Main application entry point."""
+    global runner, site
+    
+    if RUN_MODE == "render":
+        # Start webhook server
+        runner, site = await start_webhook()
+        await on_startup(bot)
+        
+        # Keep the application running
+        while True:
+            await asyncio.sleep(3600)  # Sleep for an hour
+    else:
+        # Start polling in development mode
+        logger.info("🏃‍♂️ Запуск в режимі polling...")
+        await dp.start_polling(bot)
+
+async def shutdown():
+    """Shutdown the application gracefully."""
+    print("\n🛑 Завершення роботи бота...")
+    
+    # Stop the scheduler if it's running
+    if 'scheduler' in globals() and scheduler.running:
+        scheduler.shutdown()
+        print("✅ Планувальник успішно зупинено")
+    
+    # Close database connection if it exists
+    if 'conn' in globals():
+        conn.close()
+        print("✅ З'єднання з базою даних закрито")
+    
+    # Close bot session if it exists
+    if 'bot' in globals() and hasattr(bot, 'session') and bot.session:
+        await bot.session.close()
+        print("✅ Сесія бота закрита")
+    
+    # Disconnect Telethon client if it exists
+    if 'telethon_client' in globals() and telethon_client:
+        await telethon_client.disconnect()
+        print("✅ Telethon клієнт відключений")
+    
+    # Clean up web server if it exists
+    if 'runner' in globals() and 'site' in globals():
+        await site.stop()
+        await runner.cleanup()
+        print("✅ Веб-сервер зупинено")
+    
+    print("✅ Роботу бота завершено")
+
+if __name__ == "__main__":
     try:
-        category_id = int(callback.data.replace("edit_category_", ""))
-    except Exception:
-        await callback.answer("❌ Некоректний ID категорії.", show_alert=True)
-        return
-    await state.set_state(CategoryEdit.waiting_for_new_name)
-    await state.update_data(category_id=category_id)
-    await bot.send_message(
-        chat_id=callback.from_user.id,
-        text=f"Введіть нову назву для категорії (id={category_id}):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="« Назад", callback_data="edit_category_name")]
-        ])
-    )
-    await callback.answer()
-
-@dp.message(CategoryEdit.waiting_for_new_name)
-async def handle_new_category_name(message: Message, state: FSMContext):
-    if not message.text:
-        await message.answer("❌ Назва не може бути порожньою.")
-        return
-    data = await state.get_data()
-    category_id = data.get("category_id")
-    new_name = message.text.strip() if message.text else None
-    if not new_name:
-        await message.answer("❌ Назва не може бути порожньою.")
-        return
-    if not category_id:
-        await message.answer("❌ Не вдалося визначити категорію.")
-        await state.clear()
-        return
-    success = update_category_name(category_id, new_name)
-    if success:
-        await message.answer(f"✅ Назву категорії змінено на: {new_name}")
-    else:
-        await message.answer("❌ Не вдалося змінити назву категорії.")
-    await state.clear()
-
-@dp.message(Command("addcategory"))
-async def add_category_handler(message: Message):
-    if not message.text:
-        await message.answer("❌ Формат: /addcategory Назва_категорії")
-        return
-    args = message.text.split(maxsplit=1)
-    if len(args) != 2:
-        await message.answer("❌ Формат: /addcategory Назва_категорії")
-        return
-    name = args[1].strip()
-    if not name:
-        await message.answer("❌ Назва категорії не може бути порожньою.")
-        return
-    success = add_category(name)
-    if success:
-        await message.answer(f"✅ Категорію '{name}' додано!")
-    else:
-        await message.answer(f"❌ Не вдалося додати категорію. Можливо, така вже існує.")
-
-@dp.message(Command("delcategory"))
-async def delete_category_handler(message: Message):
-    if not message.text:
-        await message.answer("❌ Формат: /delcategory id_категорії")
-        return
-    args = message.text.split()
-    if len(args) != 2 or not args[1].isdigit():
-        await message.answer("❌ Формат: /delcategory id_категорії")
-        return
-    category_id = int(args[1])
-    success = delete_category(category_id)
-    if success:
-        await message.answer(f"✅ Категорію з id={category_id} видалено!")
-    else:
-        await message.answer(f"❌ Не вдалося видалити категорію. Перевірте id.")
-
-import threading, http.server, socketserver
-
-
-
-
-
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Бот зупинено вручну")
+    except Exception as e:
+        print(f"❌ Помилка: {e}")
+    finally:
+        # Run the shutdown coroutine in the event loop
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(shutdown())
