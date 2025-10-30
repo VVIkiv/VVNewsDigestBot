@@ -1312,17 +1312,6 @@ async def main() -> None:
     except Exception as e:
         logger.error(f"Помилка при налаштуванні завдань розсилки: {e}")
 
-# --- KEEP ALIVE SERVER ДЛЯ RENDER ---
-def start_keep_alive_server():
-    def _serve():
-        handler = http.server.SimpleHTTPRequestHandler
-        with socketserver.TCPServer(("", PORT), handler) as httpd:
-            logger.info(f"🌍 Keep-alive сервер запущено на порту {PORT}")
-            httpd.serve_forever()
-    threading.Thread(target=_serve, daemon=True).start()
-
-start_keep_alive_server()
-
 # Функція для безпечного відправлення повідомлень
 async def safe_send(chat_id: int, text: str, reply_markup=None):
     try:

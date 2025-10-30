@@ -4,3 +4,6 @@ apscheduler==3.10.4
 python-dotenv
 requests
 aiohttp
+cryptg>=0.4.0
+#pip install pyopenssl
+

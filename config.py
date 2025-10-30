@@ -75,11 +75,11 @@ DB_PATH = get_db_path()
 
 # Webhook configuration
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-PORT = int(os.getenv("PORT", "10000"))
+PORT = int(os.getenv("PORT", 10000))  # 🔹 за замовчуванням 10000, якщо не задано
 
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не знайдено у змінних середовища.")
 
-# Log the configuration
 print(f"🚀 Конфігурація завантажена. Режим: {RUN_MODE.upper()}")
 print(f"📦 База даних: {os.path.abspath(DB_PATH)}")
+print(f"🌐 Порт: {PORT}, Webhook URL: {WEBHOOK_URL}")
