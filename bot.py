@@ -1546,3 +1546,30 @@ if __name__ == "__main__":
         except RuntimeError:
             logging.warning("⚙️ Keep-alive сервер уже запущено.")
 
+if __name__ == "__main__":
+    import asyncio
+
+    async def main():
+        if RUN_MODE == "render":
+            # 🔹 WEBHOOK режим для Render
+            from aiohttp import web
+
+            async def on_startup(bot):
+                await bot.set_webhook(WEBHOOK_URL)
+                logging.info(f"🌐 Webhook встановлено: {WEBHOOK_URL}")
+
+            async def on_shutdown(bot):
+                logging.info("🛑 Вимикаємо бот...")
+                await bot.delete_webhook()
+
+            app = web.Application()
+            app.router.add_post("/webhook", dp.start_webhook)
+            logging.info("🚀 Запускаємо бот у режимі WEBHOOK (Render)...")
+            web.run_app(app, host="0.0.0.0", port=PORT)
+
+        else:
+            # 🔹 POLLING режим для локального запуску
+            logging.info("🤖 Запуск бота у режимі POLLING (Local)...")
+            await dp.start_polling(bot, skip_updates=True)
+
+    asyncio.run(main())

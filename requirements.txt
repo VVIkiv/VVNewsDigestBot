@@ -1,9 +1,11 @@
-aiogram==3.4.1
-telethon==1.36.0
-apscheduler==3.10.4
-python-dotenv
-requests
-aiohttp
-cryptg>=0.4.0
-#pip install pyopenssl
 
+aiogram==3.4.1
+aiohttp==3.9.5
+telethon==1.34.0
+cryptg>=0.4.0
+python-dotenv==1.0.1
+schedule
+requests
+APScheduler==3.10.4
+sqlite-utils
+tqdm
