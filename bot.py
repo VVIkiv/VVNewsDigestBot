@@ -1500,43 +1500,47 @@ async def run_bot():
     finally:
         await shutdown()
         
+# === KEEP-ALIVE СЕРВЕР ДЛЯ RENDER ===
 import os
 import asyncio
 import logging
 from aiohttp import web
 
+# [1] Проста функція, щоб перевірити, що бот "живий"
 async def handle(request):
     return web.Response(text="✅ VVNewsDigestBot is running", content_type="text/plain")
 
+# [2] Асинхронна функція запуску keep-alive сервера
 async def start_keep_alive_server():
-    """Keep-alive сервер для Render, який не створює конфлікт портів"""
+    """Keep-alive сервер для Render, щоб уникнути засинання сервісу"""
     try:
-        # PORT Render встановлює автоматично
-        port = int(os.environ.get("PORT", 8080))
-        host = "0.0.0.0"
+        # Порти: Render дає PORT (для webhook) — ми робимо окремий KEEPALIVE_PORT
+        PORT = int(os.getenv("PORT", 10000))                     # Webhook-порт
+        KEEPALIVE_PORT = int(os.getenv("KEEPALIVE_PORT", 8080))  # Для keep-alive
 
         app = web.Application()
         app.router.add_get("/", handle)
 
-        logging.info(f"🌍 Keep-alive сервер запущено на порту {port}")
-
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, host=host, port=port)
+        site = web.TCPSite(runner, host="0.0.0.0", port=KEEPALIVE_PORT)
         await site.start()
 
-        # Основний нескінченний цикл
+        logging.info(f"🌍 Keep-alive сервер запущено на порту {KEEPALIVE_PORT}")
+
+        # Нескінченний цикл для тримання сервера активним
         while True:
             await asyncio.sleep(3600)
 
     except OSError as e:
-        logging.warning(f"⚠️ Порт {port} уже зайнятий, сервер не буде перезапущено: {e}")
+        logging.warning(f"⚠️ Порт {KEEPALIVE_PORT} уже зайнятий: {e}")
     except Exception as e:
         logging.error(f"❌ Помилка запуску keep-alive сервера: {e}")
 
+# [3] Якщо бот працює на Render — запускаємо keep-alive у фоновому потоці
 if __name__ == "__main__":
     import sys
-    if os.environ.get("RENDER", "1") == "1" and "gunicorn" not in sys.argv[0]:
+    if "/opt/render" in os.getcwd():  # автоматичне визначення Render
         try:
             asyncio.run(start_keep_alive_server())
         except RuntimeError:
