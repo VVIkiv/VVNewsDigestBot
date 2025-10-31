@@ -1,4 +1,3 @@
-#webapp.py
 import os
 import logging
 from flask import Flask, render_template_string, send_from_directory
@@ -6,12 +5,13 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# === Шаблон HTML сторінки (Jinja2) ===
+# === HTML-шаблон сторінки (з автооновленням) ===
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="300"> <!-- ⏱ автооновлення кожні 5 хв -->
     <title>🗞 VVNewsDigestBot — {{ date }}</title>
     <style>
         body {
@@ -76,17 +76,26 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# === Маршрут для відображення останнього дайджесту ===
+# === Функція для отримання шляху до файлу дайджесту ===
+def find_latest_digest():
+    """Шукає найновіший HTML-файл у поточній директорії."""
+    files = [f for f in os.listdir(".") if f.endswith(".html") and "digest" in f]
+    if not files:
+        return None
+    latest = max(files, key=os.path.getmtime)
+    return latest
+
+
 @app.route("/digest")
 def show_digest():
+    """Показує останній збережений дайджест"""
     try:
-        # шукаємо останній збережений дайджест
-        digest_file = "daily_digest.html"
-        if os.path.exists(digest_file):
-            logging.info("✅ Відображення локального HTML-дайджесту")
+        digest_file = find_latest_digest()
+        if digest_file:
+            logging.info(f"✅ Відображаємо файл дайджесту: {digest_file}")
             return send_from_directory(".", digest_file)
         else:
-            logging.warning("⚠️ Файл daily_digest.html не знайдено, показуємо заглушку")
+            logging.warning("⚠️ Файл дайджесту не знайдено, показуємо заглушку")
             return render_template_string(
                 HTML_TEMPLATE, news=[], date=datetime.now().strftime("%d.%m.%Y %H:%M")
             )
@@ -97,6 +106,7 @@ def show_digest():
 
 @app.route("/")
 def index():
+    """Проста головна сторінка"""
     return "<h2>✅ VVNewsDigestBot працює. Відкрий <a href='/digest'>/digest</a> щоб побачити дайджест.</h2>"
 
 
