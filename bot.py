@@ -656,6 +656,28 @@ async def send_digest_to_all_users():
         except Exception as e:
             logging.error(f"Не вдалося надіслати дайджест користувачу {user_id}: {e}")
 
+# === 9️⃣ Надсилання дайджесту на пошту ===
+from notifier import send_email_digest, save_html_digest
+import os
+
+try:
+    # Використовуємо processed_posts або all_posts — залежно від того, який список ти хочеш відправляти
+    digest_items = processed_posts if processed_posts else all_posts
+
+    if digest_items:
+        # Зберігаємо HTML-файл
+        save_html_digest(digest_items, "daily_digest.html")
+
+        # Надсилаємо email (EMAIL_TO має бути у .env)
+        send_email_digest("VVNewsDigest — сьогоднішні новини", digest_items, os.getenv("EMAIL_TO"))
+        logging.info("📧 Дайджест успішно відправлено на email.")
+    else:
+        logging.info("⚠️ Немає нових постів для відправлення email.")
+except Exception as e:
+    logging.error(f"❌ Помилка під час відправлення email-дайджесту: {e}")
+
+
+
 # --- Додатково: керування задачами розсилки для кожного користувача ---
 user_digest_jobs = {}
 
@@ -1319,14 +1341,6 @@ async def safe_send(chat_id: int, text: str, reply_markup=None):
     except Exception as e:
         logging.error(f"Помилка при відправленні повідомлення: {e}")
         return None
-
-from notifier import send_email_digest, save_html_digest
-import os
-
-# Припустимо, ти маєш список постів `digest_items`
-send_email_digest("VVNewsDigest — сьогоднішні новини", digest_items, os.getenv("EMAIL_TO"))
-save_html_digest(digest_items, "daily_digest.html")
-
 
 # Функція для безпечного редагування повідомлень
 async def safe_edit(chat_id: int, message_id: int, text: str, reply_markup=None):
