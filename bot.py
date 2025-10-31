@@ -618,6 +618,24 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
             text=f"✅ Дайджест завершено!\nНаступний дайджест буде відправлено о {next_digest.strftime('%H:%M')} (через {time_text})"
         )
 
+        # === 9️⃣ Надсилання дайджесту на пошту ===
+        from notifier import send_email_digest, save_html_digest
+        import os
+
+        try:
+            if processed_posts:
+                save_html_digest(processed_posts, "daily_digest.html")
+                send_email_digest(
+                    "VVNewsDigest — сьогоднішні новини",
+                    processed_posts,
+                    os.getenv("EMAIL_TO")
+                )
+                logging.info("📧 Дайджест успішно відправлено на email.")
+            else:
+                logging.info("⚠️ Немає нових постів для відправлення email.")
+        except Exception as e:
+            logging.error(f"❌ Помилка під час відправлення email-дайджесту: {e}")
+
     except Exception as e:
         logging.error(f"Помилка при відправці дайджесту: {str(e)}", exc_info=True)
         await bot.send_message(
@@ -656,25 +674,6 @@ async def send_digest_to_all_users():
                 await send_digest_to_user(user_id)
         except Exception as e:
             logging.error(f"Не вдалося надіслати дайджест користувачу {user_id}: {e}")
-
-# === 9️⃣ Надсилання дайджесту на пошту ===
-from notifier import send_email_digest, save_html_digest
-import os
-
-try:
-    # Використовуємо processed_posts, якщо вона існує, інакше all_posts
-    digest_items = globals().get("processed_posts") or globals().get("all_posts", [])
-
-    if digest_items:
-        save_html_digest(digest_items, "daily_digest.html")
-        send_email_digest("VVNewsDigest — сьогоднішні новини", digest_items, os.getenv("EMAIL_TO"))
-        logging.info("📧 Дайджест успішно відправлено на email.")
-    else:
-        logging.info("⚠️ Немає нових постів для відправлення email.")
-except Exception as e:
-    logging.error(f"❌ Помилка під час відправлення email-дайджесту: {e}")
-
-
 
 # --- Додатково: керування задачами розсилки для кожного користувача ---
 user_digest_jobs = {}
