@@ -9,3 +9,5 @@ requests
 APScheduler==3.10.4
 sqlite-utils
 tqdm
+Flask>=3.0
+
