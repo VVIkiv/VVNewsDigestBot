@@ -1320,6 +1320,14 @@ async def safe_send(chat_id: int, text: str, reply_markup=None):
         logging.error(f"Помилка при відправленні повідомлення: {e}")
         return None
 
+from notifier import send_email_digest, save_html_digest
+import os
+
+# Припустимо, ти маєш список постів `digest_items`
+send_email_digest("VVNewsDigest — сьогоднішні новини", digest_items, os.getenv("EMAIL_TO"))
+save_html_digest(digest_items, "daily_digest.html")
+
+
 # Функція для безпечного редагування повідомлень
 async def safe_edit(chat_id: int, message_id: int, text: str, reply_markup=None):
     try:
