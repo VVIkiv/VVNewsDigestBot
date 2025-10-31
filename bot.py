@@ -626,6 +626,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         )
 
 
+
 @dp.message(Command("digest"))
 async def digest_handler(message: Message):
     if message.from_user:
@@ -661,14 +662,11 @@ from notifier import send_email_digest, save_html_digest
 import os
 
 try:
-    # Використовуємо processed_posts або all_posts — залежно від того, який список ти хочеш відправляти
-    digest_items = processed_posts if processed_posts else all_posts
+    # Використовуємо processed_posts, якщо вона існує, інакше all_posts
+    digest_items = globals().get("processed_posts") or globals().get("all_posts", [])
 
     if digest_items:
-        # Зберігаємо HTML-файл
         save_html_digest(digest_items, "daily_digest.html")
-
-        # Надсилаємо email (EMAIL_TO має бути у .env)
         send_email_digest("VVNewsDigest — сьогоднішні новини", digest_items, os.getenv("EMAIL_TO"))
         logging.info("📧 Дайджест успішно відправлено на email.")
     else:
