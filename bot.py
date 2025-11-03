@@ -25,6 +25,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiogram import types
+from apscheduler.triggers.interval import IntervalTrigger
 
 # Set console encoding to UTF-8
 if sys.platform == 'win32':
@@ -76,6 +77,48 @@ logger = logging.getLogger(__name__)
 logger.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
 logger.info(f"📦 Використовується база: {os.path.abspath(DB_PATH)}")
 
+# === Перевірка Telethon-сесії ===
+from telethon import TelegramClient
+from config import API_ID, API_HASH
+import sys
+
+SESSION_FILE = "user_session.session"
+
+if not os.path.exists(SESSION_FILE):
+    logging.error("❌ Файл сесії Telethon не знайдено!")
+    print("\n⚠️  Не знайдено файл user_session.session.\n"
+          "Будь ласка, спочатку виконай авторизацію через:\n"
+          "   py auth_telethon.py\n")
+    sys.exit(1)
+
+from telethon import TelegramClient
+import asyncio, sys, logging
+from config import API_ID, API_HASH
+
+async def init_telethon():
+    try:
+        telethon_client = TelegramClient("user_session", API_ID, API_HASH)
+        await telethon_client.connect()
+
+        if not await telethon_client.is_user_authorized():
+            logging.warning("⚠️ Сесія знайдена, але не авторизована. Перезапусти авторизацію.")
+            print("\n⚠️  Сесія не авторизована. Виконай:\n   py auth_telethon.py\n")
+            sys.exit(1)
+        else:
+            logging.info("✅ Telethon-сесія успішно підключена.")
+            return telethon_client
+
+    except Exception as e:
+        logging.error(f"❌ Помилка під час підключення Telethon: {e}")
+        print("\n❌ Помилка під час ініціалізації Telethon-сесії.\n"
+              f"Деталі: {e}\n")
+        sys.exit(1)
+
+# Виклик при старті
+loop = asyncio.get_event_loop()
+telethon_client = loop.run_until_complete(init_telethon())
+
+
 # === 5️⃣ Ініціалізація бази даних ===
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -107,6 +150,16 @@ from db import (
     cleanup_old_posts, update_category_name,
     add_category, delete_category
 )
+
+
+import atexit
+
+@atexit.register
+def cleanup():
+    if telethon_client.is_connected():
+        asyncio.get_event_loop().run_until_complete(telethon_client.disconnect())
+        print("🔌 Telethon client disconnected cleanly.")
+
 
 from telethon_client import get_recent_posts, client as telethon_client
 
@@ -1302,24 +1355,31 @@ async def main() -> None:
     cleanup_old_posts()
     
     # Запускаємо Telethon клієнт
-    try:
-        await telethon_client.connect()
-        if not await telethon_client.is_user_authorized():
-            logger.error("Telethon не авторизовано!")
-            return
-        me = await telethon_client.get_me()
-        logger.info(f"Telethon успішно авторизовано як {getattr(me, 'username', None) or getattr(me, 'first_name', None) or me.id}")
-    except Exception as e:
-        logger.error(f"Помилка при запуску Telethon: {e}")
-        return
+from telethon import TelegramClient
+from config import API_ID, API_HASH
+import os, asyncio, logging, sys
 
-    # Запускаємо планувальник, якщо він ще не запущений
-    if not scheduler.running:
-        scheduler.start()
-        logger.info("Планувальник запущено")
+SESSION_FILE = "user_session.session"
 
-    # Додаємо завдання розсилки для всіх користувачів
-    try:
+async def init_telethon():
+    if not os.path.exists(SESSION_FILE):
+        logging.error("❌ Файл сесії Telethon не знайдено!")
+        print("\n⚠️ Не знайдено файл user_session.session. Спочатку виконай:\n   py auth_telethon.py\n")
+        sys.exit(1)
+
+    client = TelegramClient("user_session", API_ID, API_HASH)
+
+    await client.connect()
+    if not await client.is_user_authorized():
+        logging.warning("⚠️ Сесія знайдена, але не авторизована. Виконай повторну авторизацію.")
+        print("\n⚠️ Сесія не авторизована. Виконай:\n   py auth_telethon.py\n")
+        sys.exit(1)
+    else:
+        logging.info("✅ Telethon-сесія успішно підключена.")
+    return client
+
+      # Додаємо завдання розсилки для всіх користувачів
+try:
         conn = sqlite3.connect("channels.db")
         cursor = conn.cursor()
         cursor.execute("SELECT user_id, enabled, interval_hours FROM user_settings WHERE enabled = 1")
@@ -1328,7 +1388,7 @@ async def main() -> None:
                 schedule_user_digest(scheduler, user_id, interval_hours)
                 logger.info(f"Налаштовано розсилку для користувача {user_id} з інтервалом {interval_hours} годин")
         conn.close()
-    except Exception as e:
+except Exception as e:
         logger.error(f"Помилка при налаштуванні завдань розсилки: {e}")
 
 # Функція для безпечного відправлення повідомлень
@@ -1565,30 +1625,28 @@ if __name__ == "__main__":
         except RuntimeError:
             logging.warning("⚙️ Keep-alive сервер уже запущено.")
 
+import asyncio
+import logging
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+async def main():
+    logging.info("🚀 VVNewsDigestBot запущено у режимі: LOCAL")
+
+    # === 1. Ініціалізація Telethon-клієнта ===
+    if not telethon_client.is_connected():
+        await telethon_client.connect()
+        logging.info("✅ Telethon-сесія успішно підключена.")
+
+    # === 2. Ініціалізація APScheduler ===
+    # Запускаємо планувальник, якщо він ще не запущений
+    scheduler = AsyncIOScheduler()
+    scheduler.start()
+
+    # === 3. Запуск бота Aiogram ===
+    await dp.start_polling(bot)
+
 if __name__ == "__main__":
-    import asyncio
-
-    async def main():
-        if RUN_MODE == "render":
-            # 🔹 WEBHOOK режим для Render
-            from aiohttp import web
-
-            async def on_startup(bot):
-                await bot.set_webhook(WEBHOOK_URL)
-                logging.info(f"🌐 Webhook встановлено: {WEBHOOK_URL}")
-
-            async def on_shutdown(bot):
-                logging.info("🛑 Вимикаємо бот...")
-                await bot.delete_webhook()
-
-            app = web.Application()
-            app.router.add_post("/webhook", dp.start_webhook)
-            logging.info("🚀 Запускаємо бот у режимі WEBHOOK (Render)...")
-            web.run_app(app, host="0.0.0.0", port=PORT)
-
-        else:
-            # 🔹 POLLING режим для локального запуску
-            logging.info("🤖 Запуск бота у режимі POLLING (Local)...")
-            await dp.start_polling(bot, skip_updates=True)
-
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("🛑 Бот зупинено вручну.")
