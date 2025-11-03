@@ -77,47 +77,72 @@ logger = logging.getLogger(__name__)
 logger.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
 logger.info(f"📦 Використовується база: {os.path.abspath(DB_PATH)}")
 
-# === Перевірка Telethon-сесії ===
+import os
+import asyncio
+import logging
 from telethon import TelegramClient
+from telethon.errors import FloodWaitError, ChannelPrivateError
 from config import API_ID, API_HASH
-import sys
+
+# === Створення Telethon клієнта без підключення ===
+
+# Ініціалізуємо цикл подій (щоб уникнути RuntimeError)
+try:
+    loop = asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
 SESSION_FILE = "user_session.session"
 
 if not os.path.exists(SESSION_FILE):
     logging.error("❌ Файл сесії Telethon не знайдено!")
-    print("\n⚠️  Не знайдено файл user_session.session.\n"
-          "Будь ласка, спочатку виконай авторизацію через:\n"
-          "   py auth_telethon.py\n")
-    sys.exit(1)
+    raise SystemExit(
+        "\n⚠️ Не знайдено файл user_session.session.\n"
+        "Будь ласка, спочатку виконай авторизацію через:\n"
+        "   py auth_telethon.py\n"
+    )
 
-from telethon import TelegramClient
-import asyncio, sys, logging
-from config import API_ID, API_HASH
+# --- створюємо, але не підключаємо ---
+client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
+logging.info("📡 Telethon клієнт створено (поки не підключено)")
 
-async def init_telethon():
+# --- Функція безпечного підключення ---
+async def ensure_connected():
+    """Підключає клієнт лише за потреби"""
+    if not client.is_connected():
+        await client.connect()
+    if not await client.is_user_authorized():
+        raise SystemExit(
+            "⚠️ Сесія не авторизована. Виконай:\n   py auth_telethon.py"
+        )
+
+# --- Твоя основна функція для отримання постів (залиш як було далі) ---
+async def get_recent_posts(channel_username, limit=10):
+    """Отримати останні пости з Telegram-каналу"""
+    await ensure_connected()
     try:
-        telethon_client = TelegramClient("user_session", API_ID, API_HASH)
-        await telethon_client.connect()
-
-        if not await telethon_client.is_user_authorized():
-            logging.warning("⚠️ Сесія знайдена, але не авторизована. Перезапусти авторизацію.")
-            print("\n⚠️  Сесія не авторизована. Виконай:\n   py auth_telethon.py\n")
-            sys.exit(1)
-        else:
-            logging.info("✅ Telethon-сесія успішно підключена.")
-            return telethon_client
-
+        entity = await client.get_entity(channel_username)
+        posts = await client.get_messages(entity, limit=limit)
+        return [
+            {
+                "id": p.id,
+                "text": p.text or "",
+                "date": p.date,
+                "link": f"https://t.me/{channel_username}/{p.id}",
+            }
+            for p in posts if p.text
+        ]
+    except ChannelPrivateError:
+        logging.warning(f"⚠️ Канал {channel_username} приватний або недоступний.")
+        return []
+    except FloodWaitError as e:
+        logging.warning(f"⏳ Затримка через FloodWait ({e.seconds} с.)")
+        await asyncio.sleep(e.seconds)
+        return await get_recent_posts(channel_username, limit)
     except Exception as e:
-        logging.error(f"❌ Помилка під час підключення Telethon: {e}")
-        print("\n❌ Помилка під час ініціалізації Telethon-сесії.\n"
-              f"Деталі: {e}\n")
-        sys.exit(1)
-
-# Виклик при старті
-loop = asyncio.get_event_loop()
-telethon_client = loop.run_until_complete(init_telethon())
-
+        logging.error(f"❌ Помилка під час читання {channel_username}: {e}")
+        return []
 
 # === 5️⃣ Ініціалізація бази даних ===
 def init_db():
@@ -150,16 +175,6 @@ from db import (
     cleanup_old_posts, update_category_name,
     add_category, delete_category
 )
-
-
-import atexit
-
-@atexit.register
-def cleanup():
-    if telethon_client.is_connected():
-        asyncio.get_event_loop().run_until_complete(telethon_client.disconnect())
-        print("🔌 Telethon client disconnected cleanly.")
-
 
 from telethon_client import get_recent_posts, client as telethon_client
 
@@ -1632,11 +1647,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 async def main():
     logging.info("🚀 VVNewsDigestBot запущено у режимі: LOCAL")
 
-    # === 1. Ініціалізація Telethon-клієнта ===
-    if not telethon_client.is_connected():
-        await telethon_client.connect()
-        logging.info("✅ Telethon-сесія успішно підключена.")
-
     # === 2. Ініціалізація APScheduler ===
     # Запускаємо планувальник, якщо він ще не запущений
     scheduler = AsyncIOScheduler()
@@ -1650,3 +1660,12 @@ if __name__ == "__main__":
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logging.info("🛑 Бот зупинено вручну.")
+
+import atexit
+
+@atexit.register
+def cleanup():
+    if telethon_client.is_connected():
+        asyncio.get_event_loop().run_until_complete(telethon_client.disconnect())
+        print("🔌 Telethon client disconnected cleanly.")
+

@@ -1,100 +1,77 @@
-﻿from telethon import TelegramClient
-from config import API_ID, API_HASH
+﻿import os
 import asyncio
-from telethon.tl.types import User, Chat, Channel
-import os
 import logging
-import zipfile, os
-from typing import List, Dict, Union, Optional
+from telethon import TelegramClient
+from telethon.errors import FloodWaitError, ChannelPrivateError
+from config import API_ID, API_HASH
 
-import sqlite3
-sqlite3.connect('user_session.session', timeout=30)
-
-# Ініціалізуємо подію asyncio, якщо її ще немає
+# Ініціалізуємо цикл подій
 try:
     loop = asyncio.get_running_loop()
 except RuntimeError:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
+SESSION_FILE = "user_session.session"
+
+if not os.path.exists(SESSION_FILE):
+    logging.error("❌ Не знайдено файл сесії Telethon!")
+    raise SystemExit("⚠️ Спочатку виконай авторизацію: py auth_telethon.py")
+
+# --- 1. Створюємо клієнт, але не підключаємо його ---
 client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
+logging.info("📡 Telethon клієнт створено (але не підключено)")
 
+# --- 2. Допоміжна функція ---
+async def ensure_connected():
+    """Підключає клієнт тільки якщо потрібно"""
+    if not client.is_connected():
+        await client.connect()
+    if not await client.is_user_authorized():
+        raise SystemExit("⚠️ Сесія не авторизована. Запусти py auth_telethon.py")
 
-EntityType = Union[User, Chat, Channel]
-
-async def download_media(message):
+# --- 2. Функція отримання постів ---
+async def get_recent_posts(channel_username: str, limit: int = 5):
+    """Отримує останні пости з каналу"""
     try:
-        if message.media:
-            filename = f"media/{message.id}_{message.date.timestamp()}"
-            logging.info(f"Начинаю загрузку медиа для сообщения {message.id}")
-            logging.info(f"Тип медиа: {type(message.media).__name__}")
-            
-            path = await message.download_media(filename)
-            
-            if path:
-                logging.info(f"Медиа успешно загружено в: {path}")
-                return path
-            else:
-                logging.error(f"Не удалось загрузить медиа: путь пустой")
-                return None
-    except Exception as e:
-        logging.error(f"Ошибка загрузки медиа для сообщения {message.id}: {str(e)}")
-        return None
-
-async def get_recent_posts(channel: str, limit: int = 5) -> List[Dict]:
-    try:
-        # Проверяем существование канала
-        try:
-            channel_entity = await client.get_entity(channel)
-            if isinstance(channel_entity, (Chat, Channel)):
-                logging.info(f"Канал {channel} найден: {channel_entity.id}")
-            else:
-                logging.error(f"Сущность {channel} не является каналом")
-                return []
-        except Exception as e:
-            logging.error(f"Канал {channel} не найден: {str(e)}")
-            return []
-
-        messages = []
-        logging.info(f"Начинаю получение сообщений из канала {channel}, лимит: {limit}")
-        
-        async for message in client.iter_messages(channel_entity, limit=limit):
+        await ensure_connected()
+        result = []
+        async for message in client.iter_messages(channel_username, limit=limit):
             if not message:
-                logging.warning(f"Пустое сообщение из канала {channel}")
                 continue
-                
-            logging.info(f"Обработка сообщения {message.id} из канала {channel}")
-            
-            # Получаем ссылку на пост
-            post_url = f"https://t.me/{channel}/{message.id}"
-            logging.info(f"URL поста: {post_url}")
-            
-            # Получаем текст сообщения
-            text = message.text or message.raw_text or ""
-            logging.info(f"Текст сообщения: {text[:100]}...")  # Логируем первые 100 символов
-            
-            # Обрабатываем медиафайлы
+            text = message.text or ""
             media_path = None
+
+            # Якщо є медіа — зберігаємо в папку media/
             if message.media:
-                logging.info(f"Найдено медиа в сообщении {message.id}, тип: {type(message.media).__name__}")
-                try:
-                    media_path = await download_media(message)
-                    logging.info(f"Медиа успешно загружено: {media_path}")
-                except Exception as e:
-                    logging.error(f"Ошибка загрузки медиа из {channel}, сообщение {message.id}: {e}")
-            
-            post_data = {
-                "text": text,
-                "media": media_path,
-                "url": post_url,
-                "date": message.date
-            }
-            logging.info(f"Добавляю пост {message.id} в список")
-            messages.append(post_data)
-            
-        logging.info(f"Всего получено {len(messages)} сообщений из канала {channel}")
-        return messages
+                os.makedirs("media", exist_ok=True)
+                file_path = await message.download_media(file="media/")
+                media_path = file_path if file_path and os.path.exists(file_path) else None
+
+            result.append({
+                "id": message.id,
+                "text": text.strip(),
+                "date": message.date,
+                "url": f"https://t.me/{channel_username}/{message.id}",
+                "media": media_path
+            })
+        return result
+
+    except FloodWaitError as e:
+        logging.warning(f"⏳ FloodWait на {e.seconds} секунд при доступі до {channel_username}")
+        await asyncio.sleep(e.seconds)
+        return await get_recent_posts(channel_username, limit)
+    except ChannelPrivateError:
+        logging.error(f"🚫 Канал @{channel_username} приватний або недоступний.")
+        return []
     except Exception as e:
-        logging.error(f"Ошибка получения сообщений из канала {channel}: {e}", exc_info=True)
+        logging.error(f"❌ Помилка отримання постів з @{channel_username}: {e}")
         return []
 
+# --- 3. Автоматично тестуємо ---
+if __name__ == "__main__":
+    async def test():
+        posts = await get_recent_posts("bbcnews", limit=3)
+        for p in posts:
+            print(f"- {p['url']}: {p['text'][:50]}")
+    loop.run_until_complete(test())
