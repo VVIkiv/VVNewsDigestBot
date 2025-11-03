@@ -1,25 +1,23 @@
 ﻿from telethon import TelegramClient
-from telethon.tl.types import User, Chat, Channel
 from config import API_ID, API_HASH
+import asyncio
+from telethon.tl.types import User, Chat, Channel
 import os
 import logging
 import zipfile, os
 from typing import List, Dict, Union, Optional
-async def main():
-    # старт telethon client, якщо потрібно
-    if not client.is_connected():
-        await client.start()
-    # ... scheduler.start(), dp.start_polling() ...
 
-import os
-print("📁 Поточна директорія:", os.getcwd())
-print("📄 Файли тут:", os.listdir())
+import sqlite3
+sqlite3.connect('user_session.session', timeout=30)
 
-# Авторизація а телетон
-#client = TelegramClient('bot_session', API_ID, API_HASH)
-#client = TelegramClient('anon', API_ID, API_HASH)
-client = TelegramClient("user_session", API_ID, API_HASH)
+# Ініціалізуємо подію asyncio, якщо її ще немає
+try:
+    loop = asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
+client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
 
 
 EntityType = Union[User, Chat, Channel]
