@@ -337,6 +337,9 @@ async def kb_settings(message: Message):
         f"Статус: {'Увімкнено' if settings.get('enabled') else 'Вимкнено'}\n"
         f"Інтервал: {settings.get('interval_hours', 2)} год\n"
         f"Медіа: {'файлами' if settings.get('media_as_file') else 'як фото/відео'}\n"
+        f"Email: {'Увімкнено' if settings.get('email_enabled') else 'Вимкнено'}"
+        + (f" ({settings.get('email_to')})" if settings.get('email_to') else "")
+        + "\n"
     )
     keyboard = build_settings_keyboard(settings)
     await message.answer(text, reply_markup=keyboard)
@@ -355,6 +358,10 @@ def build_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
             text=("📎 Надсилати як файли" if settings.get('media_as_file') else "🖼 Надсилати як фото/відео"),
             callback_data="settings_media_toggle"
         )],
+        [InlineKeyboardButton(
+            text=("📧 Email розсилка: увімкнено" if settings.get('email_enabled') else "📧 Email розсилка: вимкнено"),
+            callback_data="settings_email_toggle"
+        )],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -372,6 +379,9 @@ async def cb_settings_toggle_enabled(cb: CallbackQuery):
             f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
             f"Інтервал: {updated.get('interval_hours', 2)} год\n"
             f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+            f"Email: {'Увімкнено' if updated.get('email_enabled') else 'Вимкнено'}"
+            + (f" ({updated.get('email_to')})" if updated.get('email_to') else "")
+            + "\n"
         )
         await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
         await cb.answer("Збережено")
@@ -451,9 +461,35 @@ async def cb_settings_back(cb: CallbackQuery):
         f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
         f"Інтервал: {updated.get('interval_hours', 2)} год\n"
         f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+        f"Email: {'Увімкнено' if updated.get('email_enabled') else 'Вимкнено'}"
+        + (f" ({updated.get('email_to')})" if updated.get('email_to') else "")
+        + "\n"
     )
     await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
     await cb.answer()
+
+@dp.callback_query(lambda c: c.data == "settings_email_toggle")
+async def cb_settings_email_toggle(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    current = get_user_digest_settings(cb.from_user.id)
+    try:
+        set_user_digest_settings(cb.from_user.id, email_enabled=not current.get('email_enabled', False))
+        updated = get_user_digest_settings(cb.from_user.id)
+        text = (
+            "⚙️ Налаштування дайджесту\n\n"
+            f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
+            f"Інтервал: {updated.get('interval_hours', 2)} год\n"
+            f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+            f"Email: {'Увімкнено' if updated.get('email_enabled') else 'Вимкнено'}"
+            + (f" ({updated.get('email_to')})" if updated.get('email_to') else "")
+            + "\n"
+        )
+        await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
+        await cb.answer("Збережено")
+    except Exception as e:
+        await cb.answer(f"Помилка: {e}", show_alert=True)
 
 # --- FSM для додавання каналу без команд ---
 class AddChannelStates(StatesGroup):
@@ -923,19 +959,24 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
             text=f"✅ Дайджест завершено!\nНаступний дайджест буде відправлено о {next_digest.strftime('%H:%M')} (через {time_text})"
         )
 
-        # === 9️⃣ Надсилання дайджесту на пошту ===
+        # === 9️⃣ Надсилання дайджесту на пошту (з урахуванням налаштувань користувача) ===
         from notifier import send_email_digest, save_html_digest
         import os
 
         try:
             if processed_posts:
-                save_html_digest(processed_posts, "daily_digest.html")
-                send_email_digest(
-                    "VVNewsDigest — сьогоднішні новини",
-                    processed_posts,
-                    os.getenv("EMAIL_TO")
-                )
-                logging.info("📧 Дайджест успішно відправлено на email.")
+                user_settings = get_user_digest_settings(user_id)
+                if user_settings.get('email_enabled') and (user_settings.get('email_to') or os.getenv("EMAIL_TO")):
+                    save_html_digest(processed_posts, "daily_digest.html")
+                    recipient = user_settings.get('email_to') or os.getenv("EMAIL_TO")
+                    send_email_digest(
+                        "VVNewsDigest — сьогоднішні новини",
+                        processed_posts,
+                        recipient
+                    )
+                    logging.info("📧 Дайджест успішно відправлено на email.")
+                else:
+                    logging.info("📧 Email-розсилка вимкнена або не налаштована адреса — пропускаю відправлення.")
             else:
                 logging.info("⚠️ Немає нових постів для відправлення email.")
         except Exception as e:

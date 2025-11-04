@@ -70,7 +70,20 @@ def init_db():
         cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", category)
 
     conn.commit()
-    conn.close()
+    # --- Додаємо відсутні колонки (міграції) ---
+    try:
+        # Перевіряємо структуру таблиці user_settings і додаємо поля, якщо їх немає
+        cursor.execute("PRAGMA table_info(user_settings)")
+        cols = {row[1] for row in cursor.fetchall()}
+        if 'email_enabled' not in cols:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN email_enabled BOOLEAN DEFAULT 0")
+        if 'email_to' not in cols:
+            cursor.execute("ALTER TABLE user_settings ADD COLUMN email_to TEXT DEFAULT NULL")
+        conn.commit()
+    except Exception as e:
+        logging.warning(f"DB migration (email columns) warning: {e}")
+    finally:
+        conn.close()
 
 
 # === 1. Робота з каналами ===
@@ -202,7 +215,9 @@ def set_user_digest_settings(user_id: int, enabled: Optional[bool] = None,
                              interval_hours: Optional[int] = None,
                              media_as_file: Optional[bool] = None,
                              selected_categories: Optional[list] = None,
-                             similarity_threshold: Optional[float] = None):
+                             similarity_threshold: Optional[float] = None,
+                             email_enabled: Optional[bool] = None,
+                             email_to: Optional[str] = None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -228,6 +243,12 @@ def set_user_digest_settings(user_id: int, enabled: Optional[bool] = None,
         if similarity_threshold is not None:
             updates.append("similarity_threshold = ?")
             params.append(similarity_threshold)
+        if email_enabled is not None:
+            updates.append("email_enabled = ?")
+            params.append(1 if email_enabled else 0)
+        if email_to is not None:
+            updates.append("email_to = ?")
+            params.append(email_to)
 
         if updates:
             query = f"UPDATE user_settings SET {', '.join(updates)} WHERE user_id = ?"
@@ -242,7 +263,9 @@ def get_user_digest_settings(user_id: int):
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT enabled, interval_hours, media_as_file, selected_categories, similarity_threshold
+            SELECT enabled, interval_hours, media_as_file, selected_categories, similarity_threshold,
+                   COALESCE(email_enabled, 0) as email_enabled,
+                   email_to
             FROM user_settings WHERE user_id = ?
         """, (user_id,))
         result = cursor.fetchone()
@@ -253,7 +276,9 @@ def get_user_digest_settings(user_id: int):
                 'interval_hours': 2,
                 'media_as_file': False,
                 'selected_categories': [],
-                'similarity_threshold': 0.7
+                'similarity_threshold': 0.7,
+                'email_enabled': False,
+                'email_to': None
             }
 
         selected_categories = [int(x) for x in result[3].split(',')] if result[3] else []
@@ -262,7 +287,9 @@ def get_user_digest_settings(user_id: int):
             'interval_hours': result[1],
             'media_as_file': bool(result[2]),
             'selected_categories': selected_categories,
-            'similarity_threshold': float(result[4]) if result[4] is not None else 0.7
+            'similarity_threshold': float(result[4]) if result[4] is not None else 0.7,
+            'email_enabled': bool(result[5]) if result[5] is not None else False,
+            'email_to': result[6]
         }
     finally:
         conn.close()
