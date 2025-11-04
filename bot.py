@@ -85,6 +85,7 @@ import os
 import asyncio
 import logging
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError, ChannelPrivateError
 from config import API_ID, API_HASH
 
@@ -98,18 +99,18 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 
 SESSION_FILE = "user_session.session"
+if RUN_MODE == 'render':
+    # На Render файлові сесії краще зберігати у /tmp
+    SESSION_FILE = "/tmp/user_session.session"
 
-if not os.path.exists(SESSION_FILE):
-    logging.error("❌ Файл сесії Telethon не знайдено!")
-    raise SystemExit(
-        "\n⚠️ Не знайдено файл user_session.session.\n"
-        "Будь ласка, спочатку виконай авторизацію через:\n"
-        "   py auth_telethon.py\n"
-    )
-
-# --- створюємо, але не підключаємо ---
-client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
-logging.info("📡 Telethon клієнт створено (поки не підключено)")
+# Віддаємо перевагу StringSession з TELETHON_SESSION
+string_session = os.getenv("TELETHON_SESSION")
+if string_session:
+    client = TelegramClient(StringSession(string_session), API_ID, API_HASH, loop=loop)
+    logging.info("📡 Telethon клієнт створено з StringSession (env)")
+else:
+    client = TelegramClient(SESSION_FILE, API_ID, API_HASH, loop=loop)
+    logging.info(f"📡 Telethon клієнт створено з файловою сесією: {SESSION_FILE}")
 
 # --- Функція безпечного підключення ---
 async def ensure_connected():
@@ -661,12 +662,16 @@ async def list_channels_handler(message: Message):
             text += f"• @{channel}\n"
             keyboard_buttons.append([
                 InlineKeyboardButton(
-                    text=f"❌ Видалити @{channel}",
+                    text="❌",
                     callback_data=f"delete_channel_{channel}"
                 ),
                 InlineKeyboardButton(
-                    text=f"📋 Перемістити @{channel}",
+                    text="↔️",
                     callback_data=f"move_channel_{channel}"
+                ),
+                InlineKeyboardButton(
+                    text=f"@{channel}",
+                    callback_data=f"channel_info_{channel}"
                 )
             ])
         text += "\n"
@@ -690,6 +695,11 @@ async def list_channels_handler(message: Message):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     await message.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("channel_info_"))
+async def channel_info_noop(cb: CallbackQuery):
+    # Нічого не робимо, кнопка лише як мітка
+    await cb.answer()
 
 @dp.message(Command("deletechannel"))
 async def delete_channel_handler(message: Message, command: CommandObject):
