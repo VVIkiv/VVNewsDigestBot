@@ -25,7 +25,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiogram import types
+from aiogram.exceptions import TelegramBadRequest
 from apscheduler.triggers.interval import IntervalTrigger
+from html import escape 
 
 # Set console encoding to UTF-8
 if sys.platform == 'win32':
@@ -38,7 +40,7 @@ import hashlib
 
 # 1. Очищення папки media
 
-def cleanup_media_folder(folder_path="media", max_age_hours=24):
+def cleanup_media_folder(folder_path="media", max_age_hours=12):
     """Видаляє файли з папки media, яким більше max_age_hours годин."""
     now = datetime.now().timestamp()
     removed = 0
@@ -67,6 +69,8 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, FSInputFile,
     InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio
 )
+from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.context import FSMContext
 
 # === 4️⃣ Логування ===
 logging.basicConfig(
@@ -234,23 +238,98 @@ def escape_markdown_v2(text):
 
 @dp.message(CommandStart())
 async def start_handler(message: Message):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="➕ Додати канал", callback_data="add_channel"),
-            InlineKeyboardButton(text="📋 Список каналів", callback_data="list_channels")
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(text="➕ Додати канал"),
+                KeyboardButton(text="📋 Список каналів")
+            ],
+            [
+                KeyboardButton(text="📰 Дайджест"),
+                KeyboardButton(text="⚙️ Налаштування")
+            ],
+            [
+                KeyboardButton(text="❓ Допомога")
+            ]
         ],
-        [
-            InlineKeyboardButton(text="📰 Дайджест", callback_data="digest"),
-            InlineKeyboardButton(text="⚙️ Налаштування", callback_data="settings")
-        ],
-        [
-            InlineKeyboardButton(text="❓ Допомога", callback_data="help")
-        ]
-    ])
+        resize_keyboard=True,
+        input_field_placeholder="Оберіть дію…"
+    )
     await message.answer(
         "Привіт! Я бот, який збиратиме новини з каналів і стискатиме їх до суті.",
         reply_markup=keyboard
     )
+
+@dp.message(F.text == "❓ Допомога")
+async def kb_help(message: Message):
+    await help_handler(message)
+
+@dp.message(F.text == "📋 Список каналів")
+async def kb_list_channels(message: Message):
+    await list_channels_handler(message)
+
+@dp.message(F.text == "➕ Додати канал")
+async def kb_add_channel(message: Message):
+    # Переходимо у стан очікування введення каналу і категорії
+    if message.from_user is None:
+        await message.answer("❌ Не вдалося визначити користувача.")
+        return
+    await message.answer(
+        "Введіть канал і категорію у форматі:\n@назва_каналу номер_категорії\n\nПриклад: @example 1\n\nСписок категорій буде показано нижче."
+    )
+    try:
+        categories = get_categories()
+        if categories:
+            text = "Доступні категорії:\n\n" + "\n".join([f"{cid} - {cname}" for cid, cname in categories])
+            await message.answer(text)
+    except Exception:
+        pass
+    await dp.fsm.set_state(message.from_user.id, AddChannelStates.waiting_channel)
+
+@dp.message(F.text == "📰 Дайджест")
+async def kb_digest(message: Message):
+    if message.from_user:
+        await send_digest_to_user(message.from_user.id)
+    else:
+        await message.answer("❌ Не вдалося визначити користувача.")
+
+@dp.message(F.text == "⚙️ Налаштування")
+async def kb_settings(message: Message):
+    await message.answer("Використайте /help, щоб побачити доступні налаштування")
+
+# --- FSM для додавання каналу без команд ---
+class AddChannelStates(StatesGroup):
+    waiting_channel = State()
+
+@dp.message(AddChannelStates.waiting_channel)
+async def add_channel_via_fsm(message: Message, state: FSMContext):
+    if not message.text or message.from_user is None:
+        await message.answer("❌ Надішліть у форматі: @назва_каналу номер_категорії")
+        return
+    parts = message.text.strip().split()
+    if len(parts) != 2 or not parts[0].startswith("@"):
+        await message.answer("❌ Формат: @назва_каналу номер_категорії")
+        return
+    channel = parts[0].lstrip('@')
+    try:
+        category_id = int(parts[1])
+    except ValueError:
+        await message.answer("❌ Номер категорії має бути числом")
+        return
+    # Перевіримо наявність категорії
+    categories = get_categories()
+    category_name = next((name for cid, name in categories if cid == category_id), None)
+    if category_name is None:
+        await message.answer("❌ Категорія не знайдена. Спробуйте ще раз.")
+        return
+    try:
+        add_channel(message.from_user.id, channel, category_id)
+        await message.answer(f"✅ Канал @{channel} додано до категорії {category_name}!")
+    except Exception as e:
+        await message.answer(f"❌ Помилка додавання каналу: {e}")
+        return
+    finally:
+        await state.clear()
 
 # Добавим обработчик для кнопки "Допомога"
 @dp.callback_query(lambda c: c.data == "help")
@@ -285,7 +364,7 @@ async def inline_help(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="« Назад", callback_data="back_to_main")]
     ])
-
+    
     if callback.message:
         await bot.edit_message_text(
             chat_id=callback.message.chat.id if callback.message else callback.from_user.id,
