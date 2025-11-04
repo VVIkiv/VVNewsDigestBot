@@ -328,7 +328,132 @@ async def on_digest_all(cb: CallbackQuery):
 
 @dp.message(F.text == "⚙️ Налаштування")
 async def kb_settings(message: Message):
-    await message.answer("Використайте /help, щоб побачити доступні налаштування")
+    if not message.from_user:
+        await message.answer("❌ Не вдалося визначити користувача.")
+        return
+    settings = get_user_digest_settings(message.from_user.id)
+    text = (
+        "⚙️ Налаштування дайджесту\n\n"
+        f"Статус: {'Увімкнено' if settings.get('enabled') else 'Вимкнено'}\n"
+        f"Інтервал: {settings.get('interval_hours', 2)} год\n"
+        f"Медіа: {'файлами' if settings.get('media_as_file') else 'як фото/відео'}\n"
+    )
+    keyboard = build_settings_keyboard(settings)
+    await message.answer(text, reply_markup=keyboard)
+
+def build_settings_keyboard(settings: dict) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(
+            text=("🟢 Автодайджест увімкнено" if settings.get('enabled') else "🔴 Автодайджест вимкнено"),
+            callback_data="settings_toggle_enabled"
+        )],
+        [InlineKeyboardButton(
+            text=f"⏱ Інтервал: {settings.get('interval_hours', 2)} год",
+            callback_data="settings_interval_menu"
+        )],
+        [InlineKeyboardButton(
+            text=("📎 Надсилати як файли" if settings.get('media_as_file') else "🖼 Надсилати як фото/відео"),
+            callback_data="settings_media_toggle"
+        )],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+@dp.callback_query(lambda c: c.data == "settings_toggle_enabled")
+async def cb_settings_toggle_enabled(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    current = get_user_digest_settings(cb.from_user.id)
+    try:
+        set_user_digest_settings(cb.from_user.id, enabled=not current.get('enabled', False))
+        updated = get_user_digest_settings(cb.from_user.id)
+        text = (
+            "⚙️ Налаштування дайджесту\n\n"
+            f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
+            f"Інтервал: {updated.get('interval_hours', 2)} год\n"
+            f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+        )
+        await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
+        await cb.answer("Збережено")
+    except Exception as e:
+        await cb.answer(f"Помилка: {e}", show_alert=True)
+
+@dp.callback_query(lambda c: c.data == "settings_media_toggle")
+async def cb_settings_media_toggle(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    current = get_user_digest_settings(cb.from_user.id)
+    try:
+        set_user_digest_settings(cb.from_user.id, media_as_file=not current.get('media_as_file', False))
+        updated = get_user_digest_settings(cb.from_user.id)
+        text = (
+            "⚙️ Налаштування дайджесту\n\n"
+            f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
+            f"Інтервал: {updated.get('interval_hours', 2)} год\n"
+            f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+        )
+        await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
+        await cb.answer("Збережено")
+    except Exception as e:
+        await cb.answer(f"Помилка: {e}", show_alert=True)
+
+@dp.callback_query(lambda c: c.data == "settings_interval_menu")
+async def cb_settings_interval_menu(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    current = get_user_digest_settings(cb.from_user.id)
+    buttons = [
+        [InlineKeyboardButton(text="1 год", callback_data="settings_interval_1"),
+         InlineKeyboardButton(text="2 год", callback_data="settings_interval_2"),
+         InlineKeyboardButton(text="3 год", callback_data="settings_interval_3")],
+        [InlineKeyboardButton(text="6 год", callback_data="settings_interval_6"),
+         InlineKeyboardButton(text="12 год", callback_data="settings_interval_12"),
+         InlineKeyboardButton(text="24 год", callback_data="settings_interval_24")],
+        [InlineKeyboardButton(text="« Назад", callback_data="settings_back")]
+    ]
+    text = (
+        "⏱ Виберіть інтервал розсилки\n\n"
+        f"Поточний: {current.get('interval_hours', 2)} год"
+    )
+    await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await cb.answer()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("settings_interval_"))
+async def cb_settings_set_interval(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    try:
+        hours = int(cb.data.split("settings_interval_")[-1])
+        set_user_digest_settings(cb.from_user.id, interval_hours=hours)
+        updated = get_user_digest_settings(cb.from_user.id)
+        text = (
+            "⚙️ Налаштування дайджесту\n\n"
+            f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
+            f"Інтервал: {updated.get('interval_hours', 2)} год\n"
+            f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+        )
+        await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
+        await cb.answer("Інтервал збережено")
+    except Exception as e:
+        await cb.answer(f"Помилка: {e}", show_alert=True)
+
+@dp.callback_query(lambda c: c.data == "settings_back")
+async def cb_settings_back(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    updated = get_user_digest_settings(cb.from_user.id)
+    text = (
+        "⚙️ Налаштування дайджесту\n\n"
+        f"Статус: {'Увімкнено' if updated.get('enabled') else 'Вимкнено'}\n"
+        f"Інтервал: {updated.get('interval_hours', 2)} год\n"
+        f"Медіа: {'файлами' if updated.get('media_as_file') else 'як фото/відео'}\n"
+    )
+    await cb.message.edit_text(text, reply_markup=build_settings_keyboard(updated))
+    await cb.answer()
 
 # --- FSM для додавання каналу без команд ---
 class AddChannelStates(StatesGroup):

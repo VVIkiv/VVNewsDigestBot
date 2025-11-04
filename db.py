@@ -206,34 +206,33 @@ def set_user_digest_settings(user_id: int, enabled: Optional[bool] = None,
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        # 1) Ensure row exists
+        cursor.execute("INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)", (user_id,))
+
+        # 2) Build dynamic update
         updates = []
         params = []
 
         if enabled is not None:
             updates.append("enabled = ?")
-            params.append(enabled)
+            params.append(1 if enabled else 0)
         if interval_hours is not None:
             updates.append("interval_hours = ?")
             params.append(interval_hours)
         if media_as_file is not None:
             updates.append("media_as_file = ?")
-            params.append(media_as_file)
+            params.append(1 if media_as_file else 0)
         if selected_categories is not None:
             updates.append("selected_categories = ?")
-            params.append(','.join(map(str, selected_categories)))
+            params.append(','.join(map(str, selected_categories)) if selected_categories else None)
         if similarity_threshold is not None:
             updates.append("similarity_threshold = ?")
             params.append(similarity_threshold)
 
         if updates:
-            query = f"""
-                INSERT INTO user_settings 
-                (user_id, enabled, interval_hours, media_as_file, selected_categories, similarity_threshold)
-                VALUES (?, 0, 2, 0, NULL, 0.7)
-                ON CONFLICT(user_id) DO UPDATE SET {', '.join(updates)}
-            """
-            cursor.execute(query, [user_id] + params)
-            conn.commit()
+            query = f"UPDATE user_settings SET {', '.join(updates)} WHERE user_id = ?"
+            cursor.execute(query, params + [user_id])
+        conn.commit()
     finally:
         conn.close()
 
