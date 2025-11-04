@@ -288,10 +288,43 @@ async def kb_add_channel(message: Message):
 
 @dp.message(F.text == "📰 Дайджест")
 async def kb_digest(message: Message):
-    if message.from_user:
-        await send_digest_to_user(message.from_user.id)
-    else:
+    if not message.from_user:
         await message.answer("❌ Не вдалося визначити користувача.")
+        return
+    try:
+        categories = get_categories()
+    except Exception as e:
+        categories = []
+        logging.error(f"Не вдалося отримати категорії: {e}")
+
+    buttons = []
+    for cid, cname in categories:
+        buttons.append([InlineKeyboardButton(text=f"🗂 {cname}", callback_data=f"digest_cat_{cid}")])
+    buttons.append([InlineKeyboardButton(text="📚 Всі категорії", callback_data="digest_all")])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await message.answer("Виберіть категорію для дайджесту:", reply_markup=keyboard)
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("digest_cat_"))
+async def on_digest_category(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    try:
+        cat_id_str = cb.data.split("digest_cat_")[-1]
+        category_id = int(cat_id_str)
+    except Exception:
+        await cb.answer("Невірна категорія", show_alert=False)
+        return
+    await cb.answer("Формую дайджест…", show_alert=False)
+    await send_digest_to_user(cb.from_user.id, category_id=category_id)
+
+@dp.callback_query(lambda c: c.data == "digest_all")
+async def on_digest_all(cb: CallbackQuery):
+    if not cb.from_user:
+        await cb.answer()
+        return
+    await cb.answer("Формую повний дайджест…", show_alert=False)
+    await send_digest_to_user(cb.from_user.id)
 
 @dp.message(F.text == "⚙️ Налаштування")
 async def kb_settings(message: Message):
