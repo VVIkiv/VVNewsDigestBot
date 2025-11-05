@@ -765,8 +765,8 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         logging.info(f"Получаем новости из каналов: {cleaned_channels}")
      # 8. Основна логіка дайджесту (send_digest_to_user, send_digest_to_all_users)
  
-        # Получаем посты из каналов
-        fetch_tasks = [get_recent_posts(channel, limit=5) for channel in cleaned_channels]
+        # Получаем посты из каналов (расширяем окно до 20 постов на канал)
+        fetch_tasks = [get_recent_posts(channel, limit=20) for channel in cleaned_channels]
         results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
         
         # Фильтруем результаты, исключая ошибки

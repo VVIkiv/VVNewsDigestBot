@@ -36,14 +36,13 @@ async def get_recent_posts(channel_username: str, limit: int = 5):
         async for message in client.iter_messages(channel_username, limit=limit):
             if not message:
                 continue
-            text = message.text or ""
+            # Використовуємо raw_text, щоб гарантовано отримати підпис до медіа/повний текст
+            text = getattr(message, 'raw_text', None) or getattr(message, 'message', None) or ""
             media_path = None
 
-            # Якщо є медіа — зберігаємо в папку media/
-            if message.media:
-                os.makedirs("media", exist_ok=True)
-                file_path = await message.download_media(file="media/")
-                media_path = file_path if file_path and os.path.exists(file_path) else None
+            # Пропускаємо завантаження медіа на етапі збору (щоб не блокувати дайджест)
+            # Можна буде завантажувати точково під час надсилання, якщо потрібно
+            media_path = None
 
             result.append({
                 "id": message.id,
