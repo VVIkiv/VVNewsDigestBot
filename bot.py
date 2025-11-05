@@ -1622,9 +1622,21 @@ async def init_telethon():
 
       # Додаємо завдання розсилки для всіх користувачів
 try:
-        conn = sqlite3.connect("channels.db")
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, enabled, interval_hours FROM user_settings WHERE enabled = 1")
+        try:
+            cursor.execute("SELECT user_id, enabled, interval_hours FROM user_settings WHERE enabled = 1")
+        except Exception as e:
+            # Якщо таблиці ще немає (наприклад, на чистому Render) — ініціалізуємо БД і пробуємо ще раз
+            if "no such table: user_settings" in str(e):
+                try:
+                    from db import init_db as _init_db
+                    _init_db()
+                    cursor.execute("SELECT user_id, enabled, interval_hours FROM user_settings WHERE enabled = 1")
+                except Exception as ee:
+                    raise ee
+            else:
+                raise
         for user_id, enabled, interval_hours in cursor.fetchall():
             if enabled and interval_hours:
                 schedule_user_digest(scheduler, user_id, interval_hours)
