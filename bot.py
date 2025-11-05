@@ -947,7 +947,7 @@ async def digest_handler(message: Message):
 
 async def send_digest_to_all_users():
     """Отправка дайджеста всем пользователям с учетом выбранных категорий"""
-    conn = sqlite3.connect("channels.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT user_id, selected_categories 
