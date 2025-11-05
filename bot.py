@@ -84,70 +84,9 @@ logger.info(f"📦 Використовується база: {os.path.abspath(D
 import os
 import asyncio
 import logging
-from telethon import TelegramClient
-from telethon.sessions import StringSession
-from telethon.errors import FloodWaitError, ChannelPrivateError
-from config import API_ID, API_HASH
+from telethon_client import get_recent_posts, client as telethon_client
 
-# === Створення Telethon клієнта без підключення ===
-
-# Ініціалізуємо цикл подій (щоб уникнути RuntimeError)
-try:
-    loop = asyncio.get_running_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-SESSION_FILE = "user_session.session"
-if RUN_MODE == 'render':
-    # На Render файлові сесії краще зберігати у /tmp
-    SESSION_FILE = "/tmp/user_session.session"
-
-# Віддаємо перевагу StringSession з TELETHON_SESSION
-string_session = os.getenv("TELETHON_SESSION")
-if string_session:
-    client = TelegramClient(StringSession(string_session), API_ID, API_HASH, loop=loop)
-    logging.info("📡 Telethon клієнт створено з StringSession (env)")
-else:
-    client = TelegramClient(SESSION_FILE, API_ID, API_HASH, loop=loop)
-    logging.info(f"📡 Telethon клієнт створено з файловою сесією: {SESSION_FILE}")
-
-# --- Функція безпечного підключення ---
-async def ensure_connected():
-    """Підключає клієнт лише за потреби"""
-    if not client.is_connected():
-        await client.connect()
-    if not await client.is_user_authorized():
-        raise SystemExit(
-            "⚠️ Сесія не авторизована. Виконай:\n   py auth_telethon.py"
-        )
-
-# --- Твоя основна функція для отримання постів (залиш як було далі) ---
-async def get_recent_posts(channel_username, limit=10):
-    """Отримати останні пости з Telegram-каналу"""
-    await ensure_connected()
-    try:
-        entity = await client.get_entity(channel_username)
-        posts = await client.get_messages(entity, limit=limit)
-        return [
-            {
-                "id": p.id,
-                "text": p.text or "",
-                "date": p.date,
-                "link": f"https://t.me/{channel_username}/{p.id}",
-            }
-            for p in posts if p.text
-        ]
-    except ChannelPrivateError:
-        logging.warning(f"⚠️ Канал {channel_username} приватний або недоступний.")
-        return []
-    except FloodWaitError as e:
-        logging.warning(f"⏳ Затримка через FloodWait ({e.seconds} с.)")
-        await asyncio.sleep(e.seconds)
-        return await get_recent_posts(channel_username, limit)
-    except Exception as e:
-        logging.error(f"❌ Помилка під час читання {channel_username}: {e}")
-        return []
+# Використовуємо спільний Telethon клієнт і функції з telethon_client.py
 
 # === 5️⃣ Ініціалізація бази даних ===
 def init_db():
@@ -1953,7 +1892,14 @@ import atexit
 
 @atexit.register
 def cleanup():
-    if telethon_client.is_connected():
-        asyncio.get_event_loop().run_until_complete(telethon_client.disconnect())
-        print("🔌 Telethon client disconnected cleanly.")
+    try:
+        if telethon_client.is_connected():
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(telethon_client.disconnect())
+            finally:
+                loop.close()
+            print("🔌 Telethon client disconnected cleanly.")
+    except Exception as e:
+        logging.debug(f"Cleanup skipped: {e}")
 

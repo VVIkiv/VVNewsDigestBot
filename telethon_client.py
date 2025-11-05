@@ -6,13 +6,6 @@ from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError, ChannelPrivateError
 from config import API_ID, API_HASH, RUN_MODE
 
-# Ініціалізуємо цикл подій
-try:
-    loop = asyncio.get_running_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
 SESSION_FILE = "user_session.session"
 if RUN_MODE == 'render':
     SESSION_FILE = "/tmp/user_session.session"
@@ -20,10 +13,10 @@ if RUN_MODE == 'render':
 # Віддаємо перевагу StringSession з TELETHON_SESSION
 string_session = os.getenv("TELETHON_SESSION")
 if string_session:
-    client = TelegramClient(StringSession(string_session), API_ID, API_HASH, loop=loop)
+    client = TelegramClient(StringSession(string_session), API_ID, API_HASH)
     logging.info("📡 Telethon клієнт створено з StringSession (env)")
 else:
-    client = TelegramClient(SESSION_FILE, API_ID, API_HASH, loop=loop)
+    client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     logging.info(f"📡 Telethon клієнт створено з файловою сесією: {SESSION_FILE}")
 
 # --- 2. Допоміжна функція ---
@@ -32,7 +25,7 @@ async def ensure_connected():
     if not client.is_connected():
         await client.connect()
     if not await client.is_user_authorized():
-        raise SystemExit("⚠️ Сесія не авторизована. Запусти py auth_telethon.py")
+        raise RuntimeError("⚠️ Telethon сесія не авторизована. Запусти py auth_telethon.py")
 
 # --- 2. Функція отримання постів ---
 async def get_recent_posts(channel_username: str, limit: int = 5):
