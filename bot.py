@@ -1721,6 +1721,10 @@ async def start_webhook():
     """Start the webhook server."""
     app = web.Application()
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+    # Health check on root for Render
+    async def health(request):
+        return web.Response(text="✅ VVNewsDigestBot is running", content_type="text/plain")
+    app.router.add_get("/", health)
     setup_application(app, dp, bot=bot)
     
     runner = web.AppRunner(app)
@@ -1763,6 +1767,10 @@ async def main():
         await ensure_webhook_deleted()
     
     if RUN_MODE == "render":
+        # Ensure scheduler is running on Render
+        if not scheduler.running:
+            scheduler.start()
+            logger.info("Scheduler started")
         # Start webhook server
         runner, site = await start_webhook()
         await on_startup(bot)
@@ -1872,12 +1880,7 @@ async def start_keep_alive_server():
 
 # [3] Якщо бот працює на Render — запускаємо keep-alive у фоновому потоці
 if __name__ == "__main__":
-    import sys
-    if "/opt/render" in os.getcwd():  # автоматичне визначення Render
-        try:
-            asyncio.run(start_keep_alive_server())
-        except RuntimeError:
-            logging.warning("⚙️ Keep-alive сервер уже запущено.")
+    pass
 
 import asyncio
 import logging
