@@ -106,6 +106,15 @@ try:
     from db import init_db
     init_db()
     logger.info("✅ База даних успішно ініціалізована.")
+    # Якщо це Render, спробуємо одноразово імпортувати стартові дані з локального файлу
+    if RUN_MODE == 'render':
+        try:
+            seed_file = os.path.join(os.path.dirname(__file__), 'channels.db')
+            inserted = seed_db_from_file(seed_file)
+            if inserted > 0:
+                logger.info(f"🌱 Імпортовано {inserted} записів із стартового channels.db у {DB_PATH}")
+        except Exception as e:
+            logger.warning(f"Не вдалося виконати початкове завантаження каналів: {e}")
 except Exception as e:
     logger.error(f"❌ Помилка ініціалізації бази даних: {e}")
     raise
@@ -117,7 +126,7 @@ from db import (
     add_sent_post, is_post_sent, get_categories, get_channels,
     get_channels_by_category, update_channel_category, update_db_structure,
     cleanup_old_posts, update_category_name,
-    add_category, delete_category
+    add_category, delete_category, seed_db_from_file
 )
 
 from telethon_client import get_recent_posts, client as telethon_client

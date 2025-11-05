@@ -344,3 +344,68 @@ get_user_channels = get_channels
 def update_db_structure():
     """Застаріла функція, залишена для сумісності."""
     init_db()
+
+
+def seed_db_from_file(seed_path: str) -> int:
+    """Копіює дані з локального SQLite файлу у поточну БД, якщо вона порожня.
+    Повертає кількість вставлених рядків (сумарно по таблицях)."""
+    if not os.path.exists(seed_path):
+        return 0
+    target = get_connection()
+    try:
+        tcur = target.cursor()
+        # Перевіряємо, чи є хоч один канал
+        try:
+            tcur.execute("SELECT COUNT(1) FROM channels")
+            if (tcur.fetchone() or [0])[0] > 0:
+                return 0
+        except Exception:
+            # Якщо таблиць ще немає — ініціалізуємо
+            init_db()
+        src = sqlite3.connect(seed_path)
+        try:
+            scur = src.cursor()
+            inserted = 0
+            # Категорії
+            try:
+                for row in scur.execute("SELECT id, name FROM categories"):
+                    tcur.execute("INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)", (row[0], row[1]))
+                    inserted += tcur.rowcount
+            except Exception:
+                pass
+            # Канали
+            try:
+                for row in scur.execute("SELECT user_id, channel_name, category_id FROM channels"):
+                    tcur.execute("""
+                        INSERT OR IGNORE INTO channels (user_id, channel_name, category_id)
+                        VALUES (?, ?, ?)
+                    """, (row[0], row[1], row[2]))
+                    inserted += tcur.rowcount
+            except Exception:
+                pass
+            # Налаштування користувачів
+            try:
+                for row in scur.execute("SELECT user_id, enabled, interval_hours, last_digest_time, media_as_file, selected_categories, similarity_threshold FROM user_settings"):
+                    tcur.execute("""
+                        INSERT OR IGNORE INTO user_settings (user_id, enabled, interval_hours, last_digest_time, media_as_file, selected_categories, similarity_threshold)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, row)
+                    inserted += tcur.rowcount
+            except Exception:
+                pass
+            # Історія відправлень (не критично, можна пропустити)
+            try:
+                for row in scur.execute("SELECT user_id, post_hash, sent_at FROM sent_posts"):
+                    tcur.execute("""
+                        INSERT OR IGNORE INTO sent_posts (user_id, post_hash, sent_at)
+                        VALUES (?, ?, ?)
+                    """, row)
+                    inserted += tcur.rowcount
+            except Exception:
+                pass
+            target.commit()
+            return max(inserted, 0)
+        finally:
+            src.close()
+    finally:
+        target.close()
