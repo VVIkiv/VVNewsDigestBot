@@ -103,7 +103,7 @@ def init_db():
     conn.close()
 
 try:
-    from db import init_db
+    from db import init_db, seed_db_from_file
     init_db()
     logger.info("✅ База даних успішно ініціалізована.")
     # Якщо це Render, спробуємо одноразово імпортувати стартові дані з локального файлу
