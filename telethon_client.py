@@ -1,9 +1,10 @@
-﻿import os
+import os
 import asyncio
 import logging
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError, ChannelPrivateError
-from config import API_ID, API_HASH
+from config import API_ID, API_HASH, RUN_MODE
 
 # Ініціалізуємо цикл подій
 try:
@@ -13,14 +14,17 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 
 SESSION_FILE = "user_session.session"
+if RUN_MODE == 'render':
+    SESSION_FILE = "/tmp/user_session.session"
 
-if not os.path.exists(SESSION_FILE):
-    logging.error("❌ Не знайдено файл сесії Telethon!")
-    raise SystemExit("⚠️ Спочатку виконай авторизацію: py auth_telethon.py")
-
-# --- 1. Створюємо клієнт, але не підключаємо його ---
-client = TelegramClient("user_session", API_ID, API_HASH, loop=loop)
-logging.info("📡 Telethon клієнт створено (але не підключено)")
+# Віддаємо перевагу StringSession з TELETHON_SESSION
+string_session = os.getenv("TELETHON_SESSION")
+if string_session:
+    client = TelegramClient(StringSession(string_session), API_ID, API_HASH, loop=loop)
+    logging.info("📡 Telethon клієнт створено з StringSession (env)")
+else:
+    client = TelegramClient(SESSION_FILE, API_ID, API_HASH, loop=loop)
+    logging.info(f"📡 Telethon клієнт створено з файловою сесією: {SESSION_FILE}")
 
 # --- 2. Допоміжна функція ---
 async def ensure_connected():
