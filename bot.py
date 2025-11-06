@@ -1968,8 +1968,8 @@ async def main():
 
         # === 2. Ініціалізація APScheduler ===
         # Запускаємо планувальник, якщо він ще не запущений
-        scheduler = AsyncIOScheduler()
-        scheduler.start()
+        if not scheduler.running:
+            scheduler.start()
 
         # === 3. Запуск бота Aiogram ===
         await dp.start_polling(bot)
