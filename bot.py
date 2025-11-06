@@ -218,7 +218,7 @@ async def kb_list_channels(message: Message):
     await list_channels_handler(message)
 
 @dp.message(F.text == "➕ Додати канал")
-async def kb_add_channel(message: Message):
+async def kb_add_channel(message: Message, state: FSMContext):
     # Переходимо у стан очікування введення каналу і категорії
     if message.from_user is None:
         await message.answer("❌ Не вдалося визначити користувача.")
@@ -233,7 +233,7 @@ async def kb_add_channel(message: Message):
             await message.answer(text)
     except Exception:
         pass
-    await dp.fsm.set_state(message.from_user.id, AddChannelStates.waiting_channel)
+    await state.set_state(AddChannelStates.waiting_channel)
 
 @dp.message(F.text == "📰 Дайджест")
 async def kb_digest(message: Message):
