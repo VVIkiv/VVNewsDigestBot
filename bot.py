@@ -1765,29 +1765,31 @@ async def main():
     """Main application entry point."""
     global runner, site
     
-    # Start Telethon client
-    if not telethon_client.is_connected():
-        logger.info("🔌 Підключення до Telethon...")
-        await telethon_client.start()
-        logger.info("✅ Telethon клієнт підключено")
-    
-    # Always ensure webhook is deleted in polling mode
-    if RUN_MODE != "render":
-        await ensure_webhook_deleted()
-    
     if RUN_MODE == "render":
         # Ensure scheduler is running on Render
         if not scheduler.running:
             scheduler.start()
             logger.info("Scheduler started")
-        # Start webhook server
+        # Bind HTTP port ASAP to satisfy Render port scan
         runner, site = await start_webhook()
         await on_startup(bot)
-        
+        # Initialize Telethon AFTER binding the port
+        if not telethon_client.is_connected():
+            logger.info("🔌 Підключення до Telethon...")
+            await telethon_client.start()
+            logger.info("✅ Telethon клієнт підключено")
         # Keep the application running
         while True:
             await asyncio.sleep(3600)  # Sleep for an hour
     else:
+        # Start Telethon client (development/local)
+        if not telethon_client.is_connected():
+            logger.info("🔌 Підключення до Telethon...")
+            await telethon_client.start()
+            logger.info("✅ Telethon клієнт підключено")
+        # Always ensure webhook is deleted in polling mode
+        await ensure_webhook_deleted()
+        
         # Start polling in development mode
         logger.info("🏃‍♂️ Запуск в режимі polling...")
         max_retries = 3
