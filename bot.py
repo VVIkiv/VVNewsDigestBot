@@ -202,12 +202,43 @@ async def start_handler(message: Message):
             ]
         ],
         resize_keyboard=True,
+        is_persistent=True,
+        one_time_keyboard=False,
         input_field_placeholder="Оберіть дію…"
     )
     await message.answer(
         "Привіт! Я бот, який збиратиме новини з каналів і стискатиме їх до суті.",
-        reply_markup=keyboard
+        reply_markup=ReplyKeyboardRemove()
     )
+    # Додаємо також інлайн-меню, щоб кнопки були видимі в повідомленні
+    inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Додати канал", callback_data="add_channel"),
+         InlineKeyboardButton(text="📋 Список каналів", callback_data="list_channels")],
+        [InlineKeyboardButton(text="📰 Дайджест", callback_data="digest"),
+         InlineKeyboardButton(text="⚙️ Налаштування", callback_data="settings")],
+        [InlineKeyboardButton(text="❓ Допомога", callback_data="help")]
+    ])
+    await message.answer("Оберіть дію з меню нижче:", reply_markup=inline_keyboard)
+
+@dp.message(Command("menu"))
+async def menu_handler(message: Message):
+    await start_handler(message)
+
+# Показувати головне меню при будь-якому тексті у приватному чаті, якщо це не наші кнопки/команди
+MAIN_BUTTONS = {
+    "➕ Додати канал",
+    "📋 Список каналів",
+    "📰 Дайджест",
+    "⚙️ Налаштування",
+    "❓ Допомога",
+}
+
+@dp.message(F.chat.type == "private")
+async def fallback_show_menu(message: Message):
+    # Ігноруємо команди та наші службові кнопки
+    if message.text and (message.text.startswith("/") or message.text in MAIN_BUTTONS):
+        return
+    await start_handler(message)
 
 @dp.message(F.text == "❓ Допомога")
 async def kb_help(message: Message):
