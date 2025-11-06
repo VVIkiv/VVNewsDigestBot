@@ -8,5 +8,5 @@ services:
     envVars:
       - key: MODE
         value: RENDER
-      - key: PORT
-        value: 10000
+      # PORT не задаємо вручну
+      # (інші секрети краще зберігати через Render Dashboard або .env)
