@@ -1,14 +1,12 @@
 services:
-  - type: worker
-    name: news-digest-bot
+  - type: web
+    name: vvnewsdigestbot
     env: python
-    pythonVersion: 3.11.9
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python bot.py"
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
     envVars:
-      - key: BOT_TOKEN
-        sync: false
-      - key: API_ID
-        sync: false
-      - key: API_HASH
-        sync: false
+      - key: MODE
+        value: RENDER
+      - key: PORT
+        value: 10000
