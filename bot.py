@@ -206,9 +206,16 @@ async def start_handler(message: Message):
         one_time_keyboard=False,
         input_field_placeholder="Оберіть дію…"
     )
+    bottom_keyboard = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        resize_keyboard=True,
+        is_persistent=True,
+        one_time_keyboard=False,
+        input_field_placeholder="Натисніть \"🏠 Меню\" для відкриття меню"
+    )
     await message.answer(
         "Привіт! Я бот, який збиратиме новини з каналів і стискатиме їх до суті.",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=bottom_keyboard
     )
     # Додаємо також інлайн-меню, щоб кнопки були видимі в повідомленні
     inline_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -223,6 +230,10 @@ async def start_handler(message: Message):
 @dp.message(Command("menu"))
 async def menu_handler(message: Message):
     await start_handler(message)
+
+@dp.message(F.text == "🏠 Меню")
+async def home_menu_button(message: Message):
+    await menu_handler(message)
 
 # Показувати головне меню при будь-якому тексті у приватному чаті, якщо це не наші кнопки/команди
 MAIN_BUTTONS = {
