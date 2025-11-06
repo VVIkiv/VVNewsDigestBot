@@ -1908,26 +1908,26 @@ async def handle(request):
 async def start_keep_alive_server():
     """Keep-alive сервер для Render, щоб уникнути засинання сервісу"""
     try:
-        # Порти: Render дає PORT (для webhook) — ми робимо окремий KEEPALIVE_PORT
-        PORT = int(os.getenv("PORT", 10000))                     # Webhook-порт
-        KEEPALIVE_PORT = int(os.getenv("KEEPALIVE_PORT", 8080))  # Для keep-alive
+        # На Render потрібно слухати саме $PORT, який надає платформа
+        PORT = int(os.getenv("PORT", 10000))
 
         app = web.Application()
         app.router.add_get("/", handle)
+        app.router.add_get("/healthz", handle)
 
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, host="0.0.0.0", port=KEEPALIVE_PORT)
+        site = web.TCPSite(runner, host="0.0.0.0", port=PORT)
         await site.start()
 
-        logging.info(f"🌍 Keep-alive сервер запущено на порту {KEEPALIVE_PORT}")
+        logging.info(f"🌍 Keep-alive сервер запущено на порту {PORT}")
 
         # Нескінченний цикл для тримання сервера активним
         while True:
             await asyncio.sleep(3600)
 
     except OSError as e:
-        logging.warning(f"⚠️ Порт {KEEPALIVE_PORT} уже зайнятий: {e}")
+        logging.warning(f"⚠️ Порт зайнятий або недоступний: {e}")
     except Exception as e:
         logging.error(f"❌ Помилка запуску keep-alive сервера: {e}")
 
@@ -1940,15 +1940,39 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 async def main():
-    logging.info("🚀 VVNewsDigestBot запущено у режимі: LOCAL")
+    if str(RUN_MODE).lower() == "render":
+        logging.info("🚀 VVNewsDigestBot запущено у режимі: RENDER")
 
-    # === 2. Ініціалізація APScheduler ===
-    # Запускаємо планувальник, якщо він ще не запущений
-    scheduler = AsyncIOScheduler()
-    scheduler.start()
+        # Ініціалізація APScheduler, якщо ще не запущений
+        if not scheduler.running:
+            scheduler.start()
 
-    # === 3. Запуск бота Aiogram ===
-    await dp.start_polling(bot)
+        # Паралельно запускаємо HTTP-сервер (на $PORT) та polling
+        # 1) Піднімаємо HTTP, щоб Render побачив порт
+        # 2) Гарантовано відключаємо вебхук перед polling
+        # 3) Гарантуємо запуск Telethon клієнта
+        async def _start_polling():
+            await ensure_webhook_deleted()
+            if not telethon_client.is_connected():
+                logging.info("🔌 Підключення до Telethon...")
+                await telethon_client.start()
+                logging.info("✅ Telethon клієнт підключено")
+            await dp.start_polling(bot)
+
+        await asyncio.gather(
+            start_keep_alive_server(),
+            _start_polling()
+        )
+    else:
+        logging.info("🚀 VVNewsDigestBot запущено у режимі: LOCAL")
+
+        # === 2. Ініціалізація APScheduler ===
+        # Запускаємо планувальник, якщо він ще не запущений
+        scheduler = AsyncIOScheduler()
+        scheduler.start()
+
+        # === 3. Запуск бота Aiogram ===
+        await dp.start_polling(bot)
 
 if __name__ == "__main__":
     try:
