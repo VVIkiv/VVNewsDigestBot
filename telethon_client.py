@@ -10,11 +10,34 @@ SESSION_FILE = "user_session.session"
 if RUN_MODE == 'render':
     SESSION_FILE = "/tmp/user_session.session"
 
-# Віддаємо перевагу StringSession з TELETHON_SESSION
-string_session = os.getenv("TELETHON_SESSION")
+# Віддаємо перевагу StringSession з оточення; різні ключі для LOCAL/RENDER
+env_used = None
+if str(RUN_MODE).lower() == 'render':
+    string_session = (
+        os.getenv("TELETHON_SESSION")
+        or os.getenv("TELETHON_SESSION_RENDER")
+        or os.getenv("TELETHON_SESSION_STRING")
+    )
+    env_used = (
+        "TELETHON_SESSION" if os.getenv("TELETHON_SESSION") else
+        "TELETHON_SESSION_RENDER" if os.getenv("TELETHON_SESSION_RENDER") else
+        "TELETHON_SESSION_STRING" if os.getenv("TELETHON_SESSION_STRING") else None
+    )
+else:
+    string_session = (
+        os.getenv("TELETHON_SESSION_LOCAL")
+        or os.getenv("TELETHON_SESSION")
+        or os.getenv("TELETHON_SESSION_STRING")
+    )
+    env_used = (
+        "TELETHON_SESSION_LOCAL" if os.getenv("TELETHON_SESSION_LOCAL") else
+        "TELETHON_SESSION" if os.getenv("TELETHON_SESSION") else
+        "TELETHON_SESSION_STRING" if os.getenv("TELETHON_SESSION_STRING") else None
+    )
+
 if string_session:
     client = TelegramClient(StringSession(string_session), API_ID, API_HASH)
-    logging.info("📡 Telethon клієнт створено з StringSession (env)")
+    logging.info(f"📡 Telethon клієнт створено з StringSession (env: {env_used})")
 else:
     client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     logging.info(f"📡 Telethon клієнт створено з файловою сесією: {SESSION_FILE}")
@@ -26,6 +49,17 @@ async def ensure_connected():
         await client.connect()
     if not await client.is_user_authorized():
         raise RuntimeError("⚠️ Telethon сесія не авторизована. Запусти py auth_telethon.py")
+    # Заборонити бот-сесії для читання історії каналів через MTProto
+    try:
+        me = await client.get_me()
+        if getattr(me, 'bot', False):
+            raise RuntimeError(
+                "🚫 Telethon запущено з bot-сесією. Боти обмежені MTProto і не можуть читати історію каналів. "
+                "Застосуй StringSession користувача (через телефон/2FA або QR) у TELETHON_SESSION_LOCAL/RENDER."
+            )
+    except Exception:
+        # Якщо get_me впав — нехай верхній рівень залогує та впорається
+        pass
 
 # --- 2. Функція отримання постів ---
 async def get_recent_posts(channel_username: str, limit: int = 5):

@@ -647,9 +647,9 @@ async def list_channels_handler(message: Message):
     text = "📋 Ваші канали по категоріям:\n\n"
     keyboard_buttons = []
     for category, channel_list in channels_by_category.items():
-        text += f"📑 {category}:\n"
+        text += f"📑 {html.escape(str(category))}:\n"
         for channel in channel_list:
-            text += f"• @{channel}\n"
+            text += f"• @{html.escape(str(channel))}\n"
             keyboard_buttons.append([
                 InlineKeyboardButton(
                     text="❌",
@@ -1242,7 +1242,7 @@ async def inline_list_channels(cb: CallbackQuery):
     # Додаємо список категорій для зміни
     text += "\n🗂 *Список категорій для зміни назви:*\n"
     for cat_id, cat_name in categories_list:
-        text += f"• {cat_id}: {cat_name}\n"
+        text += f"• {cat_id}: {html.escape(str(cat_name))}\n"
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text=f"✏️ Змінити назву '{cat_name}'",
@@ -1263,7 +1263,7 @@ async def inline_list_channels(cb: CallbackQuery):
                 message_id=cb.message.message_id if cb.message else None,
                 text=text,
                 reply_markup=keyboard,
-                parse_mode="Markdown"
+                parse_mode="HTML"
             )
         except TelegramBadRequest as e:
             if "message is not modified" not in str(e):
@@ -1273,7 +1273,7 @@ async def inline_list_channels(cb: CallbackQuery):
             chat_id=cb.from_user.id,
             text=text,
             reply_markup=keyboard,
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     await cb.answer()
 
@@ -1599,8 +1599,8 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
             await bot.send_document(
                 chat_id=chat_id,
                 document=input_file,
-                caption=caption,
-                parse_mode="Markdown"
+                caption=(html.escape(caption) if caption else None),
+                parse_mode="HTML"
             )
         else:
             # Отправляем в зависимости от типа
@@ -1608,22 +1608,22 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
                 await bot.send_photo(
                     chat_id=chat_id,
                     photo=input_file,
-                    caption=caption,
-                    parse_mode="Markdown"
+                    caption=(html.escape(caption) if caption else None),
+                    parse_mode="HTML"
                 )
             elif ext in ['.mp4', '.avi', '.mov', '.webm']:
                 await bot.send_video(
                     chat_id=chat_id,
                     video=input_file,
-                    caption=caption,
-                    parse_mode="Markdown"
+                    caption=(html.escape(caption) if caption else None),
+                    parse_mode="HTML"
                 )
             else:
                 await bot.send_document(
                     chat_id=chat_id,
                     document=input_file,
-                    caption=caption,
-                    parse_mode="Markdown"
+                    caption=(html.escape(caption) if caption else None),
+                    parse_mode="HTML"
                 )
         return True
         
