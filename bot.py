@@ -647,9 +647,9 @@ async def list_channels_handler(message: Message):
     text = "📋 Ваші канали по категоріям:\n\n"
     keyboard_buttons = []
     for category, channel_list in channels_by_category.items():
-        text += f"📑 {html.escape(str(category))}:\n"
+        text += f"📑 {category}:\n"
         for channel in channel_list:
-            text += f"• @{html.escape(str(channel))}\n"
+            text += f"• @{channel}\n"
             keyboard_buttons.append([
                 InlineKeyboardButton(
                     text="❌",
@@ -990,6 +990,31 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         )
 
 
+async def send_user_digest_with_preferences(user_id: int):
+    """
+    Відправляє дайджест із урахуванням вибраних категорій користувача.
+    Якщо категорії не вибрані — надсилає повний дайджест.
+    """
+    try:
+        settings = get_user_digest_settings(user_id)
+    except Exception as e:
+        logging.error(f"Не вдалося отримати налаштування користувача {user_id}: {e}")
+        return
+
+    selected_categories = settings.get('selected_categories') or []
+
+    if selected_categories:
+        for category_id in selected_categories:
+            try:
+                await send_digest_to_user(user_id, category_id=category_id)
+            except Exception as e:
+                logging.error(
+                    f"Помилка при відправці дайджесту користувачу {user_id} "
+                    f"для категорії {category_id}: {e}"
+                )
+    else:
+        await send_digest_to_user(user_id)
+
 
 @dp.message(Command("digest"))
 async def digest_handler(message: Message):
@@ -1001,23 +1026,16 @@ async def send_digest_to_all_users():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT user_id, selected_categories 
+        SELECT user_id
         FROM user_settings 
         WHERE enabled = 1
     """)
-    users = cursor.fetchall()
+    users = [row[0] for row in cursor.fetchall()]
     conn.close()
 
-    for user_id, selected_categories in users:
+    for user_id in users:
         try:
-            if selected_categories:
-                # Преобразуем строку в список ID категорий
-                categories = [int(x) for x in selected_categories.split(',')]
-                for category_id in categories:
-                    await send_digest_to_user(user_id, category_id=category_id)
-            else:
-                # Если категории не выбраны - отправляем полный дайджест
-                await send_digest_to_user(user_id)
+            await send_user_digest_with_preferences(user_id)
         except Exception as e:
             logging.error(f"Не вдалося надіслати дайджест користувачу {user_id}: {e}")
 
@@ -1046,7 +1064,7 @@ def schedule_user_digest(scheduler, user_id, interval_hours):
     
     # Додаємо нову задачу з потрібним інтервалом
     job = scheduler.add_job(
-        send_digest_to_user,
+        send_user_digest_with_preferences,
         trigger=IntervalTrigger(hours=interval_hours, start_date=start_time),
         args=[user_id],
         id=job_id,
@@ -1242,7 +1260,7 @@ async def inline_list_channels(cb: CallbackQuery):
     # Додаємо список категорій для зміни
     text += "\n🗂 *Список категорій для зміни назви:*\n"
     for cat_id, cat_name in categories_list:
-        text += f"• {cat_id}: {html.escape(str(cat_name))}\n"
+        text += f"• {cat_id}: {cat_name}\n"
         keyboard_buttons.append([
             InlineKeyboardButton(
                 text=f"✏️ Змінити назву '{cat_name}'",
@@ -1263,7 +1281,7 @@ async def inline_list_channels(cb: CallbackQuery):
                 message_id=cb.message.message_id if cb.message else None,
                 text=text,
                 reply_markup=keyboard,
-                parse_mode="HTML"
+                parse_mode="Markdown"
             )
         except TelegramBadRequest as e:
             if "message is not modified" not in str(e):
@@ -1273,7 +1291,7 @@ async def inline_list_channels(cb: CallbackQuery):
             chat_id=cb.from_user.id,
             text=text,
             reply_markup=keyboard,
-            parse_mode="HTML"
+            parse_mode="Markdown"
         )
     await cb.answer()
 
@@ -1599,8 +1617,8 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
             await bot.send_document(
                 chat_id=chat_id,
                 document=input_file,
-                caption=(html.escape(caption) if caption else None),
-                parse_mode="HTML"
+                caption=caption,
+                parse_mode="Markdown"
             )
         else:
             # Отправляем в зависимости от типа
@@ -1608,22 +1626,22 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
                 await bot.send_photo(
                     chat_id=chat_id,
                     photo=input_file,
-                    caption=(html.escape(caption) if caption else None),
-                    parse_mode="HTML"
+                    caption=caption,
+                    parse_mode="Markdown"
                 )
             elif ext in ['.mp4', '.avi', '.mov', '.webm']:
                 await bot.send_video(
                     chat_id=chat_id,
                     video=input_file,
-                    caption=(html.escape(caption) if caption else None),
-                    parse_mode="HTML"
+                    caption=caption,
+                    parse_mode="Markdown"
                 )
             else:
                 await bot.send_document(
                     chat_id=chat_id,
                     document=input_file,
-                    caption=(html.escape(caption) if caption else None),
-                    parse_mode="HTML"
+                    caption=caption,
+                    parse_mode="Markdown"
                 )
         return True
         
