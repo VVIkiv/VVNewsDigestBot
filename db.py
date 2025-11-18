@@ -300,7 +300,7 @@ def add_sent_post(user_id: int, post_hash: str):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "DELETE FROM sent_posts WHERE user_id = ? AND sent_at < datetime('now', '-7 days')",
+        "DELETE FROM sent_posts WHERE user_id = ? AND sent_at < datetime('now', '-1 day')",
         (user_id,)
     )
     cursor.execute(
@@ -317,7 +317,7 @@ def is_post_sent(user_id: int, post_hash: str) -> bool:
     cursor.execute("""
         SELECT 1 FROM sent_posts 
         WHERE user_id = ? AND post_hash = ? 
-        AND sent_at > datetime('now', '-7 days')
+        AND sent_at > datetime('now', '-1 day')
     """, (user_id, post_hash))
     result = cursor.fetchone() is not None
     conn.close()

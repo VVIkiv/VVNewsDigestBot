@@ -22,6 +22,7 @@ import threading
 import http.server
 import socketserver
 import re
+import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -155,7 +156,7 @@ def cleanup_old_digests():
     try:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM sent_posts WHERE sent_at < datetime('now', '-7 days')")
+        cursor.execute("DELETE FROM sent_posts WHERE sent_at < datetime('now', '-1 day')")
         conn.commit()
         conn.close()
         logging.info("Очищено застарілі пости з бази даних")
@@ -717,7 +718,8 @@ def create_post_hash(
     channel: Optional[str],
     date: Optional[datetime] = None,
     media: Optional[str] = None,
-    url: Optional[str] = None
+    url: Optional[str] = None,
+    message_id: Optional[int] = None
 ) -> str:
     """Створює стабільний хеш поста з урахуванням змісту, а не часу."""
     normalized_text = ""
@@ -745,6 +747,9 @@ def create_post_hash(
             hash_parts.append(channel)
         elif date:
             hash_parts.append(str(int(date.timestamp())))
+
+    if message_id is not None and channel:
+        hash_parts.append(f"msg:{channel}:{message_id}")
 
     content = "|".join(hash_parts) or (url or f"{channel}:{date}" if (channel or date) else "empty")
     return hashlib.md5(content.encode("utf-8")).hexdigest()
@@ -859,7 +864,8 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
                 channel=post.get('channel'),
                 date=post.get('date'),
                 media=post.get('media'),
-                url=post.get('url')
+                url=post.get('url'),
+                message_id=post.get('id')
             )
 
             if post_hash in seen_hashes:
