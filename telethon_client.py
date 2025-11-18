@@ -6,38 +6,21 @@ from telethon.sessions import StringSession
 from telethon.errors import FloodWaitError, ChannelPrivateError
 from config import API_ID, API_HASH, RUN_MODE
 
-SESSION_FILE = "user_session.session"
+# Ім'я сесії можна задати через змінну середовища,
+# щоб локальне та серверне оточення мали різні файли/ключі
+SESSION_NAME = os.getenv("TELETHON_SESSION_NAME", "user_session")
+
+# Шлях до файлу сесії залежить від середовища
 if RUN_MODE == 'render':
-    SESSION_FILE = "/tmp/user_session.session"
-
-# Віддаємо перевагу StringSession з оточення; різні ключі для LOCAL/RENDER
-env_used = None
-if str(RUN_MODE).lower() == 'render':
-    string_session = (
-        os.getenv("TELETHON_SESSION")
-        or os.getenv("TELETHON_SESSION_RENDER")
-        or os.getenv("TELETHON_SESSION_STRING")
-    )
-    env_used = (
-        "TELETHON_SESSION" if os.getenv("TELETHON_SESSION") else
-        "TELETHON_SESSION_RENDER" if os.getenv("TELETHON_SESSION_RENDER") else
-        "TELETHON_SESSION_STRING" if os.getenv("TELETHON_SESSION_STRING") else None
-    )
+    SESSION_FILE = f"/tmp/{SESSION_NAME}.session"
 else:
-    string_session = (
-        os.getenv("TELETHON_SESSION_LOCAL")
-        or os.getenv("TELETHON_SESSION")
-        or os.getenv("TELETHON_SESSION_STRING")
-    )
-    env_used = (
-        "TELETHON_SESSION_LOCAL" if os.getenv("TELETHON_SESSION_LOCAL") else
-        "TELETHON_SESSION" if os.getenv("TELETHON_SESSION") else
-        "TELETHON_SESSION_STRING" if os.getenv("TELETHON_SESSION_STRING") else None
-    )
+    SESSION_FILE = f"{SESSION_NAME}.session"
 
+# Віддаємо перевагу StringSession з TELETHON_SESSION
+string_session = os.getenv("TELETHON_SESSION")
 if string_session:
     client = TelegramClient(StringSession(string_session), API_ID, API_HASH)
-    logging.info(f"📡 Telethon клієнт створено з StringSession (env: {env_used})")
+    logging.info("📡 Telethon клієнт створено з StringSession (env)")
 else:
     client = TelegramClient(SESSION_FILE, API_ID, API_HASH)
     logging.info(f"📡 Telethon клієнт створено з файловою сесією: {SESSION_FILE}")
@@ -49,17 +32,6 @@ async def ensure_connected():
         await client.connect()
     if not await client.is_user_authorized():
         raise RuntimeError("⚠️ Telethon сесія не авторизована. Запусти py auth_telethon.py")
-    # Заборонити бот-сесії для читання історії каналів через MTProto
-    try:
-        me = await client.get_me()
-        if getattr(me, 'bot', False):
-            raise RuntimeError(
-                "🚫 Telethon запущено з bot-сесією. Боти обмежені MTProto і не можуть читати історію каналів. "
-                "Застосуй StringSession користувача (через телефон/2FA або QR) у TELETHON_SESSION_LOCAL/RENDER."
-            )
-    except Exception:
-        # Якщо get_me впав — нехай верхній рівень залогує та впорається
-        pass
 
 # --- 2. Функція отримання постів ---
 async def get_recent_posts(channel_username: str, limit: int = 5):
@@ -83,7 +55,8 @@ async def get_recent_posts(channel_username: str, limit: int = 5):
                 "text": text.strip(),
                 "date": message.date,
                 "url": f"https://t.me/{channel_username}/{message.id}",
-                "media": media_path
+                "media": media_path,
+                "channel": channel_username
             })
         return result
 
@@ -104,4 +77,4 @@ if __name__ == "__main__":
         posts = await get_recent_posts("bbcnews", limit=3)
         for p in posts:
             print(f"- {p['url']}: {p['text'][:50]}")
-    loop.run_until_complete(test())
+    asyncio.run(test())

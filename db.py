@@ -324,7 +324,7 @@ def is_post_sent(user_id: int, post_hash: str) -> bool:
     return result
 
 
-def cleanup_old_posts(days: int = 7):
+def cleanup_old_posts(days: int = 1):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(

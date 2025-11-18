@@ -21,6 +21,7 @@ import html
 import threading
 import http.server
 import socketserver
+import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -67,7 +68,8 @@ from aiogram.filters import Command, CommandStart, CommandObject
 from aiogram.types import (
     Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, FSInputFile,
-    InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio
+    InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio,
+    BufferedInputFile
 )
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
@@ -710,29 +712,42 @@ async def delete_channel_handler(message: Message, command: CommandObject):
         await message.answer(f"❌ Канал @{channel} не знайдено.")
 # 7. Групування та фільтрація новин
 
-def create_post_hash(text: str, channel: str, date: Optional[datetime] = None, media: Optional[str] = None) -> str:
-    """Создает уникальный хеш поста"""
-    # Очищаем текст от пробелов и служебных символов
-    clean_text = re.sub(r'\s+', ' ', text.strip()) if text else ''
-    clean_text = re.sub(r'http\S+', '', clean_text)  # Удаляем ссылки
-    
-    # Формируем список частей для хеширования
+def create_post_hash(
+    text: Optional[str],
+    channel: Optional[str],
+    date: Optional[datetime] = None,
+    media: Optional[str] = None,
+    url: Optional[str] = None
+) -> str:
+    """Створює стабільний хеш поста з урахуванням змісту, а не часу."""
+    normalized_text = ""
+    if text:
+        normalized_text = re.sub(r'http\S+', '', text)
+        normalized_text = re.sub(r'\s+', ' ', normalized_text).strip().lower()
+
     hash_parts = []
-    hash_parts.append(channel)
-    hash_parts.append(clean_text[:200])  # Берем первые 200 символов текста
-    hash_parts.append(str(date.timestamp()) if date else '')  # Добавляем дату публикации
-    
-    # Добавляем информацию о медиафайле
+    if normalized_text:
+        hash_parts.append(normalized_text[:500])
+
     if media:
         try:
             file_size = os.path.getsize(media)
             hash_parts.append(f"{os.path.basename(media)}:{file_size}")
         except Exception as e:
-            logging.error(f"Ошибка при получении размера файла {media}: {e}")
-            
-    # Соединяем все части
-    content = "|".join(str(part) for part in hash_parts)
-    return hashlib.md5(content.encode()).hexdigest()
+            logging.debug(f"Media size read error for {media}: {e}")
+
+    if not hash_parts:
+        if url:
+            hash_parts.append(url)
+        elif channel and date:
+            hash_parts.append(f"{channel}:{int(date.timestamp())}")
+        elif channel:
+            hash_parts.append(channel)
+        elif date:
+            hash_parts.append(str(int(date.timestamp())))
+
+    content = "|".join(hash_parts) or (url or f"{channel}:{date}" if (channel or date) else "empty")
+    return hashlib.md5(content.encode("utf-8")).hexdigest()
 
 def are_posts_similar(text1: str, text2: str) -> bool:
     """Проверяет схожесть двух текстов"""
@@ -839,27 +854,25 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         all_posts.sort(key=lambda x: x['date'], reverse=True)
 
         for post in all_posts:
-            # Проверяем есть ли текст в посте
-            if not post['text']:
-                continue
-                
-            # Создаем хеш поста для проверки дубликатов
-            post_hash = hashlib.md5(post['text'].encode()).hexdigest()
-            
-            # Пропускаем дубликаты
+            post_hash = create_post_hash(
+                text=post.get('text'),
+                channel=post.get('channel'),
+                date=post.get('date'),
+                media=post.get('media'),
+                url=post.get('url')
+            )
+
             if post_hash in seen_hashes:
                 continue
-                
             seen_hashes.add(post_hash)
-            
-            # Проверяем, был ли пост уже отправлен ранее
+
             if not is_post_sent(user_id, post_hash):
+                post['digest_hash'] = post_hash
                 processed_posts.append(post)
                 new_posts_count += 1
                 add_sent_post(user_id, post_hash)
-                
-                # Ограничиваем количество постов в дайджесте
-                if new_posts_count >= 20:  #/// максимум 10-20 постів в одному дайджесте///
+
+                if new_posts_count >= 20:
                     break
 
         if not processed_posts:
@@ -880,7 +893,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         for post in processed_posts:
             is_duplicate = False
             for f_post in filtered_posts:
-                if is_similar_news(post['text'], f_post['text'], threshold=user_threshold):
+                if is_similar_news(post.get('text', ''), f_post.get('text', ''), threshold=user_threshold):
                     is_duplicate = True
                     break
             if not is_duplicate:
@@ -889,7 +902,8 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         for post in filtered_posts:
             try:
                 # Подготавливаем текст поста
-                shortened_text = post['text'][:200] + ('...' if len(post['text']) > 200 else '')
+                post_text_full = post.get('text', '') or ''
+                shortened_text = post_text_full[:200] + ('...' if len(post_text_full) > 200 else '')
                 escaped_text = escape_markdown_v2(shortened_text)
                 post_url = escape_markdown_v2(post['url'])
                 
