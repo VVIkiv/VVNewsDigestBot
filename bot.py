@@ -1961,35 +1961,29 @@ async def main():
     if str(RUN_MODE).lower() == "render":
         logging.info("🚀 VVNewsDigestBot запущено у режимі: RENDER")
 
-        # Ініціалізація APScheduler, якщо ще не запущений
         if not scheduler.running:
             scheduler.start()
 
-        # Паралельно запускаємо HTTP-сервер (на $PORT) та polling
-        # 1) Піднімаємо HTTP, щоб Render побачив порт
-        # 2) Гарантовано відключаємо вебхук перед polling
-        # 3) Гарантуємо запуск Telethon клієнта
-        async def _start_polling():
-            await ensure_webhook_deleted()
-            if not telethon_client.is_connected():
-                logging.info("🔌 Підключення до Telethon...")
-                await telethon_client.start()
-                logging.info("✅ Telethon клієнт підключено")
-            await dp.start_polling(bot)
+        runner, site = await start_webhook()
+        await on_startup(bot)
 
-        await asyncio.gather(
-            start_keep_alive_server(),
-            _start_polling()
-        )
+        if not telethon_client.is_connected():
+            logging.info("🔌 Підключення до Telethon...")
+            await telethon_client.start()
+            logging.info("✅ Telethon клієнт підключено")
+
+        try:
+            while True:
+                await asyncio.sleep(3600)
+        finally:
+            await site.stop()
+            await runner.cleanup()
     else:
         logging.info("🚀 VVNewsDigestBot запущено у режимі: LOCAL")
 
-        # === 2. Ініціалізація APScheduler ===
-        # Запускаємо планувальник, якщо він ще не запущений
         if not scheduler.running:
             scheduler.start()
 
-        # === 3. Запуск бота Aiogram ===
         await dp.start_polling(bot)
 
 if __name__ == "__main__":
