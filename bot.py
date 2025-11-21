@@ -139,7 +139,9 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # Initialize scheduler
-scheduler = AsyncIOScheduler()
+#scheduler = AsyncIOScheduler()
+from pytz import timezone
+scheduler = AsyncIOScheduler(timezone=timezone("Europe/Kyiv"))
 
 # Add cleanup job
 scheduler.add_job(
