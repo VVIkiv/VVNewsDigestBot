@@ -970,7 +970,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         hours_diff = int(time_diff.total_seconds() / 3600)
         minutes_diff = int((time_diff.total_seconds() % 3600) / 60)
         
-        time_text = f"{hours_diff} год"
+        time_text = f"{hours_diff - 2} год"
         if minutes_diff > 0:
             time_text += f" {minutes_diff} хв"
             
