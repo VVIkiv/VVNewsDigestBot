@@ -966,7 +966,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
             next_digest += timedelta(hours=interval_hours)
             
         # Розраховуємо різницю в часі для повідомлення
-        time_diff = next_digest - now
+        time_diff = next_digest - now + TZ
         hours_diff = int(time_diff.total_seconds() / 3600)
         minutes_diff = int((time_diff.total_seconds() % 3600) / 60)
         
@@ -975,10 +975,10 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
             time_text += f" {minutes_diff} хв"
             
         await bot.send_message(
+            
             chat_id=user_id,
-            text=f"✅ Дайджест завершено!\nНаступний дайджест буде відправлено о {next_digest.strftime('%H:%M')+2} (через {time_text})"
-        )
-
+            text=f"✅ Дайджест завершено!\nНаступний дайджест буде відправлено о {(next_digest + timedelta(hours=2)).strftime('%H:%M')} (через {time_text})")
+  
         # === 9️⃣ Надсилання дайджесту на пошту (з урахуванням налаштувань користувача) ===
         from notifier import send_email_digest, save_html_digest
         import os
