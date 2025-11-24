@@ -966,7 +966,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
             next_digest += timedelta(hours=interval_hours)
             
         # Розраховуємо різницю в часі для повідомлення
-        time_diff = next_digest - now + TZ
+        time_diff = next_digest - now + timedelta(hours=2)
         hours_diff = int(time_diff.total_seconds() / 3600)
         minutes_diff = int((time_diff.total_seconds() % 3600) / 60)
         
