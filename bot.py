@@ -139,9 +139,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # Initialize scheduler
-#scheduler = AsyncIOScheduler()
-from pytz import timezone
-scheduler = AsyncIOScheduler(timezone=timezone("Europe/Kyiv"))
+scheduler = AsyncIOScheduler()
 
 # Add cleanup job
 scheduler.add_job(
@@ -978,7 +976,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
             
         await bot.send_message(
             chat_id=user_id,
-            text=f"✅ Дайджест завершено!\nНаступний дайджест буде відправлено о {next_digest.strftime('%H:%M')} (через {time_text})"
+            text=f"✅ Дайджест завершено!\nНаступний дайджест буде відправлено о {next_digest.strftime('%H:%M')+2} (через {time_text})"
         )
 
         # === 9️⃣ Надсилання дайджесту на пошту (з урахуванням налаштувань користувача) ===
