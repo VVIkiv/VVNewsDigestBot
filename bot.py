@@ -896,8 +896,16 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         user_threshold = user_settings.get('similarity_threshold', 0.7)
 
         filtered_posts = []
+        seen_urls = set()
         for post in processed_posts:
             is_duplicate = False
+
+            post_url = post.get('url')
+            if post_url:
+                if post_url in seen_urls:
+                    continue
+                seen_urls.add(post_url)
+
             for f_post in filtered_posts:
                 if is_similar_news(post.get('text', ''), f_post.get('text', ''), threshold=user_threshold):
                     is_duplicate = True
