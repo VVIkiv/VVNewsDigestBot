@@ -42,7 +42,7 @@ import hashlib
 
 # 1. Очищення папки media
 
-def cleanup_media_folder(folder_path="media", max_age_hours=24):
+def cleanup_media_folder(folder_path="media", max_age_hours=48):
     """Видаляє файли з папки media, яким більше max_age_hours годин."""
     now = datetime.now().timestamp()
     removed = 0
