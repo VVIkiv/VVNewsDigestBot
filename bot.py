@@ -184,6 +184,16 @@ def escape_markdown_v2(text):
         result = result.replace(char, f'\\{char}')
     return result
 
+def get_bottom_keyboard() -> ReplyKeyboardMarkup:
+    """Повертає нижню клавіатуру з кнопкою '🏠 Меню' для постійного відображення"""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        resize_keyboard=True,
+        is_persistent=True,
+        one_time_keyboard=False,
+        input_field_placeholder="Натисніть \"🏠 Меню\" для відкриття меню"
+    )
+
 # 4. Обробники команд (start, help, addchannel, listchannels, deletechannel, addcategory, delcategory)
 
 # 4. Обробники команд (start, help, addchannel, listchannels, deletechannel, addcategory, delcategory)
@@ -209,13 +219,7 @@ async def start_handler(message: Message):
         one_time_keyboard=False,
         input_field_placeholder="Оберіть дію…"
     )
-    bottom_keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🏠 Меню")]],
-        resize_keyboard=True,
-        is_persistent=True,
-        one_time_keyboard=False,
-        input_field_placeholder="Натисніть \"🏠 Меню\" для відкриття меню"
-    )
+    bottom_keyboard = get_bottom_keyboard()
     await message.answer(
         "Привіт! Я бот, який збиратиме новини з каналів і стискатиме їх до суті.",
         reply_markup=bottom_keyboard
@@ -266,16 +270,17 @@ async def kb_list_channels(message: Message):
 async def kb_add_channel(message: Message, state: FSMContext):
     # Переходимо у стан очікування введення каналу і категорії
     if message.from_user is None:
-        await message.answer("❌ Не вдалося визначити користувача.")
+        await message.answer("❌ Не вдалося визначити користувача.", reply_markup=get_bottom_keyboard())
         return
     await message.answer(
-        "Введіть канал і категорію у форматі:\n@назва_каналу номер_категорії\n\nПриклад: @example 1\n\nСписок категорій буде показано нижче."
+        "Введіть канал і категорію у форматі:\n@назва_каналу номер_категорії\n\nПриклад: @example 1\n\nСписок категорій буде показано нижче.",
+        reply_markup=get_bottom_keyboard()
     )
     try:
         categories = get_categories()
         if categories:
             text = "Доступні категорії:\n\n" + "\n".join([f"{cid} - {cname}" for cid, cname in categories])
-            await message.answer(text)
+            await message.answer(text, reply_markup=get_bottom_keyboard())
     except Exception:
         pass
     await state.set_state(AddChannelStates.waiting_channel)
@@ -283,7 +288,7 @@ async def kb_add_channel(message: Message, state: FSMContext):
 @dp.message(F.text == "📰 Дайджест")
 async def kb_digest(message: Message):
     if not message.from_user:
-        await message.answer("❌ Не вдалося визначити користувача.")
+        await message.answer("❌ Не вдалося визначити користувача.", reply_markup=get_bottom_keyboard())
         return
     try:
         categories = get_categories()
@@ -323,7 +328,7 @@ async def on_digest_all(cb: CallbackQuery):
 @dp.message(F.text == "⚙️ Налаштування")
 async def kb_settings(message: Message):
     if not message.from_user:
-        await message.answer("❌ Не вдалося визначити користувача.")
+        await message.answer("❌ Не вдалося визначити користувача.", reply_markup=get_bottom_keyboard())
         return
     settings = get_user_digest_settings(message.from_user.id)
     text = (
@@ -492,29 +497,29 @@ class AddChannelStates(StatesGroup):
 @dp.message(AddChannelStates.waiting_channel)
 async def add_channel_via_fsm(message: Message, state: FSMContext):
     if not message.text or message.from_user is None:
-        await message.answer("❌ Надішліть у форматі: @назва_каналу номер_категорії")
+        await message.answer("❌ Надішліть у форматі: @назва_каналу номер_категорії", reply_markup=get_bottom_keyboard())
         return
     parts = message.text.strip().split()
     if len(parts) != 2 or not parts[0].startswith("@"):
-        await message.answer("❌ Формат: @назва_каналу номер_категорії")
+        await message.answer("❌ Формат: @назва_каналу номер_категорії", reply_markup=get_bottom_keyboard())
         return
     channel = parts[0].lstrip('@')
     try:
         category_id = int(parts[1])
     except ValueError:
-        await message.answer("❌ Номер категорії має бути числом")
+        await message.answer("❌ Номер категорії має бути числом", reply_markup=get_bottom_keyboard())
         return
     # Перевіримо наявність категорії
     categories = get_categories()
     category_name = next((name for cid, name in categories if cid == category_id), None)
     if category_name is None:
-        await message.answer("❌ Категорія не знайдена. Спробуйте ще раз.")
+        await message.answer("❌ Категорія не знайдена. Спробуйте ще раз.", reply_markup=get_bottom_keyboard())
         return
     try:
         add_channel(message.from_user.id, channel, category_id)
-        await message.answer(f"✅ Канал @{channel} додано до категорії {category_name}!")
+        await message.answer(f"✅ Канал @{channel} додано до категорії {category_name}!", reply_markup=get_bottom_keyboard())
     except Exception as e:
-        await message.answer(f"❌ Помилка додавання каналу: {e}")
+        await message.answer(f"❌ Помилка додавання каналу: {e}", reply_markup=get_bottom_keyboard())
         return
     finally:
         await state.clear()
@@ -582,17 +587,17 @@ async def help_handler(message: Message):
 /setdigest [on/off/2h/3h...] — керування авто-дайджестом
 /clearhistory — очистити історію отправлених постів
 /addcategory Назва_категорії — додати категорію
-/delcategory id_категорії — видалити категорію""")
+/delcategory id_категорії — видалити категорію""", reply_markup=get_bottom_keyboard())
 
 @dp.message(Command("addchannel"))
 async def add_channel_handler(message: Message, command: CommandObject):
     if not message.text:
-        await message.answer("❌ Формат: /addchannel @назва_каналу [категорія]")
+        await message.answer("❌ Формат: /addchannel @назва_каналу [категорія]", reply_markup=get_bottom_keyboard())
         return
         
     args = message.text.split()
     if len(args) < 2 or not args[1].startswith("@"): 
-        await message.answer("❌ Формат: /addchannel @назва_каналу [категорія]")
+        await message.answer("❌ Формат: /addchannel @назва_каналу [категорія]", reply_markup=get_bottom_keyboard())
         return
         
     channel = args[1].lstrip("@")
@@ -605,7 +610,7 @@ async def add_channel_handler(message: Message, command: CommandObject):
         for cat_id, cat_name in categories:
             text += f"{cat_id} - {cat_name}\n"
         text += "\nВикористайте команду:\n/addchannel @назва_каналу номер_категорії"
-        await message.answer(text)
+        await message.answer(text, reply_markup=get_bottom_keyboard())
         return
         
     try:
@@ -615,18 +620,18 @@ async def add_channel_handler(message: Message, command: CommandObject):
         category_name = next((name for id, name in categories if id == category_id), None)
         
         if category_name is None:
-            await message.answer("❌ Категорія не знайдена. Використайте правильний номер категорії.")
+            await message.answer("❌ Категорія не знайдена. Використайте правильний номер категорії.", reply_markup=get_bottom_keyboard())
             return
             
         if message.from_user is None:
-            await message.answer("❌ Не вдалося визначити користувача.")
+            await message.answer("❌ Не вдалося визначити користувача.", reply_markup=get_bottom_keyboard())
             return
             
         add_channel(message.from_user.id, channel, category_id)
-        await message.answer(f"✅ Канал @{channel} додано до категорії {category_name}!")
+        await message.answer(f"✅ Канал @{channel} додано до категорії {category_name}!", reply_markup=get_bottom_keyboard())
         
     except ValueError:
-        await message.answer("❌ Номер категорії має бути числом")
+        await message.answer("❌ Номер категорії має бути числом", reply_markup=get_bottom_keyboard())
 
 @dp.message(Command("listchannels"))
 async def list_channels_handler(message: Message):
@@ -635,7 +640,7 @@ async def list_channels_handler(message: Message):
 
     channels = get_channels(message.from_user.id)
     if not channels:
-        await message.answer("🔍 Ви ще не додали жодного каналу.")
+        await message.answer("🔍 Ви ще не додали жодного каналу.", reply_markup=get_bottom_keyboard())
         return
     
 # 6. FSM для редагування категорій
@@ -697,20 +702,20 @@ async def channel_info_noop(cb: CallbackQuery):
 @dp.message(Command("deletechannel"))
 async def delete_channel_handler(message: Message, command: CommandObject):
     if not message.text:
-        await message.answer("❌ Формат: /deletechannel @назва_каналу")
+        await message.answer("❌ Формат: /deletechannel @назва_каналу", reply_markup=get_bottom_keyboard())
         return
     args = message.text.split()
     if len(args) != 2 or not args[1].startswith("@"): 
-        await message.answer("❌ Формат: /deletechannel @назва_каналу")
+        await message.answer("❌ Формат: /deletechannel @назва_каналу", reply_markup=get_bottom_keyboard())
         return
     channel = args[1].lstrip("@")
     if message.from_user is None:
-        await message.answer("❌ Не вдалося визначити користувача.")
+        await message.answer("❌ Не вдалося визначити користувача.", reply_markup=get_bottom_keyboard())
         return
     if delete_channel(message.from_user.id, channel):
-        await message.answer(f"✅ Канал @{channel} видалено!")
+        await message.answer(f"✅ Канал @{channel} видалено!", reply_markup=get_bottom_keyboard())
     else:
-        await message.answer(f"❌ Канал @{channel} не знайдено.")
+        await message.answer(f"❌ Канал @{channel} не знайдено.", reply_markup=get_bottom_keyboard())
 # 7. Групування та фільтрація новин
 
 def create_post_hash(
@@ -1112,36 +1117,36 @@ def remove_user_digest_job(scheduler, user_id):
 @dp.message(Command("setdigest"))
 async def setdigest_handler(message: Message, command: CommandObject):
     if not message.text:
-        await message.answer("❌ Формат: /setdigest [on/off/2h/3h/…]")
+        await message.answer("❌ Формат: /setdigest [on/off/2h/3h/…]", reply_markup=get_bottom_keyboard())
         return
     args = message.text.split()
     if len(args) != 2:
-        await message.answer("❌ Формат: /setdigest [on/off/2h/3h/…]")
+        await message.answer("❌ Формат: /setdigest [on/off/2h/3h/…]", reply_markup=get_bottom_keyboard())
         return
 
     value = args[1].lower()
     if message.from_user is None:
-        await message.answer("❌ Не вдалося визначити користувача.")
+        await message.answer("❌ Не вдалося визначити користувача.", reply_markup=get_bottom_keyboard())
         return
     user_id = message.from_user.id
     if value == "off":
         set_user_digest_settings(user_id, enabled=False)
         remove_user_digest_job(scheduler, user_id)
-        await message.answer("🔕 Автоматичну розсилку вимкнено.")
+        await message.answer("🔕 Автоматичну розсилку вимкнено.", reply_markup=get_bottom_keyboard())
     elif value == "on":
         set_user_digest_settings(user_id, enabled=True, interval_hours=2)
         schedule_user_digest(scheduler, user_id, 2)
-        await message.answer("🔔 Автоматичну розсилку увімкнено (кожні 2 години).")
+        await message.answer("🔔 Автоматичну розсилку увімкнено (кожні 2 години).", reply_markup=get_bottom_keyboard())
     elif value.endswith("h") and value[:-1].isdigit():
         hours = int(value[:-1])
         if 1 <= hours <= 24:
             set_user_digest_settings(user_id, enabled=True, interval_hours=hours)
             schedule_user_digest(scheduler, user_id, hours)
-            await message.answer(f"🔔 Автоматичну розсилку увімкнено (кожні {hours} годин).")
+            await message.answer(f"🔔 Автоматичну розсилку увімкнено (кожні {hours} годин).", reply_markup=get_bottom_keyboard())
         else:
-            await message.answer("❌ Допустимі значення — від 1h до 24h")
+            await message.answer("❌ Допустимі значення — від 1h до 24h", reply_markup=get_bottom_keyboard())
     else:
-        await message.answer("❌ Неправильне значення. Спробуйте /setdigest 3h або /setdigest off")
+        await message.answer("❌ Неправильне значення. Спробуйте /setdigest 3h або /setdigest off", reply_markup=get_bottom_keyboard())
 
 @dp.callback_query(lambda c: c.data == "select_digest_categories")
 async def select_digest_categories(callback: CallbackQuery):
