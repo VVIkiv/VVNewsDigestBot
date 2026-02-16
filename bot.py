@@ -171,6 +171,28 @@ scheduler.add_job(
     replace_existing=True
 )
 
+# Глобальний обробник помилок для безпечної роботи callback-запитів
+@dp.errors()
+async def global_error_handler(event):
+    """
+    Ігноруємо безпечні помилки типу:
+    TelegramBadRequest: query is too old / response timeout expired / query ID is invalid
+    щоб бот не падав через старі натискання на inline-кнопки.
+    """
+    exc = event.exception
+    if isinstance(exc, TelegramBadRequest):
+        msg = str(exc)
+        if (
+            "query is too old" in msg
+            or "response timeout expired" in msg
+            or "query ID is invalid" in msg
+        ):
+            logging.warning(f"Ігнорую застарілий callback-запит: {msg}")
+            return
+
+    # Для всіх інших помилок використовуємо стандартну поведінку:
+    raise exc
+
 def escape_markdown(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
