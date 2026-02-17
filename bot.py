@@ -209,7 +209,10 @@ def escape_markdown_v2(text):
 def get_bottom_keyboard() -> ReplyKeyboardMarkup:
     """Повертає нижню клавіатуру з кнопкою '🏠 Меню' для постійного відображення"""
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="🏠 Меню")]],
+        keyboard=[
+            [KeyboardButton(text="🏠 Меню")],
+            [KeyboardButton(text="⬅️ Назад")]
+        ],
         resize_keyboard=True,
         is_persistent=True,
         one_time_keyboard=False,
@@ -264,6 +267,33 @@ async def menu_handler(message: Message):
 async def home_menu_button(message: Message):
     await menu_handler(message)
 
+@dp.message(F.text == "⬅️ Назад")
+async def back_button_handler(message: Message, state: FSMContext):
+    """Обробник кнопки 'Назад' - видаляє клавіатуру та очищає стан"""
+    await state.clear()
+    await message.answer(
+        "Клавіатуру прибрано. Використайте /start для відкриття меню.",
+        reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
+    )
+
+@dp.message(Command("cancel"))
+async def cancel_handler(message: Message, state: FSMContext):
+    """Обробник команди /cancel - видаляє клавіатуру та очищає стан"""
+    await state.clear()
+    await message.answer(
+        "Операцію скасовано. Клавіатуру прибрано.",
+        reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
+    )
+
+@dp.message(Command("back"))
+async def back_command_handler(message: Message, state: FSMContext):
+    """Обробник команди /back - видаляє клавіатуру та очищає стан"""
+    await state.clear()
+    await message.answer(
+        "Клавіатуру прибрано. Використайте /start для відкриття меню.",
+        reply_markup=ReplyKeyboardRemove(remove_keyboard=True)
+    )
+
 # Показувати головне меню при будь-якому тексті у приватному чаті, якщо це не наші кнопки/команди
 MAIN_BUTTONS = {
     "➕ Додати канал",
@@ -271,6 +301,7 @@ MAIN_BUTTONS = {
     "📰 Дайджест",
     "⚙️ Налаштування",
     "❓ Допомога",
+    "⬅️ Назад",
 }
 
 @dp.message(F.chat.type == "private")
