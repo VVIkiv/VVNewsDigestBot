@@ -38,6 +38,7 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import hashlib
 
 # 1. Очищення папки media
@@ -138,8 +139,22 @@ from telethon_client import get_recent_posts, client as telethon_client
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+# Фіксований часовий пояс для коректної роботи після переведення годинника (DST)
+LOCAL_TIMEZONE = ZoneInfo("Europe/Kyiv")
+
+def get_local_now() -> datetime:
+    return datetime.now(LOCAL_TIMEZONE)
+
+def get_next_digest_time(now: datetime, interval_hours: int) -> datetime:
+    """Повертає найближчий наступний час відправки, кратний інтервалу (по годинах)."""
+    interval = max(1, int(interval_hours or 1))
+    candidate = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    while candidate.hour % interval != 0:
+        candidate += timedelta(hours=1)
+    return candidate
+
 # Initialize scheduler
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(timezone=LOCAL_TIMEZONE)
 
 # Add cleanup job
 scheduler.add_job(
@@ -148,7 +163,7 @@ scheduler.add_job(
     hours=1,
     id='cleanup_job',
     replace_existing=True,
-    next_run_time=datetime.now() + timedelta(seconds=10)  # Run first cleanup 10 seconds after start
+    next_run_time=get_local_now() + timedelta(seconds=10)  # Run first cleanup 10 seconds after start
 )
 
 # Add cleanup for old scheduled digests
@@ -1020,16 +1035,8 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
         # Отправляем информацию о следующем дайджесте
         user_settings = get_user_digest_settings(user_id)
         interval_hours = user_settings.get('interval_hours', 1)
-        now = datetime.now()
-        # Розраховуємо наступний час розсилки (початок години)
-        current_hour = now.hour
-        next_hour = ((current_hour + interval_hours - 1) // interval_hours) * interval_hours
-        if next_hour <= current_hour:
-            next_hour += interval_hours
-            
-        next_digest = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
-        if next_digest <= now:
-            next_digest += timedelta(hours=interval_hours)
+        now = get_local_now()
+        next_digest = get_next_digest_time(now, interval_hours)
             
         # Розраховуємо різницю в часі для повідомлення (без ручних UTC-зсувів)
         time_diff = next_digest - now
@@ -1138,15 +1145,8 @@ def schedule_user_digest(scheduler, user_id, interval_hours):
             pass
     
     # Розраховуємо час першого запуску (наступна година кратна інтервалу)
-    now = datetime.now()
-    current_hour = now.hour
-    next_hour = ((current_hour + interval_hours - 1) // interval_hours) * interval_hours
-    if next_hour <= current_hour:
-        next_hour += interval_hours
-    
-    start_time = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
-    if start_time <= now:
-        start_time += timedelta(hours=interval_hours)
+    now = get_local_now()
+    start_time = get_next_digest_time(now, interval_hours)
     
     # Додаємо нову задачу з потрібним інтервалом
     job = scheduler.add_job(
