@@ -22,7 +22,6 @@ import threading
 import http.server
 import socketserver
 import re
-import re
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -85,9 +84,6 @@ logger = logging.getLogger(__name__)
 logger.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
 logger.info(f"📦 Використовується база: {os.path.abspath(DB_PATH)}")
 
-import os
-import asyncio
-import logging
 from telethon_client import get_recent_posts, client as telethon_client
 
 # Використовуємо спільний Telethon клієнт і функції з telethon_client.py
@@ -132,8 +128,6 @@ from db import (
     cleanup_old_posts, update_category_name,
     add_category, delete_category, seed_db_from_file
 )
-
-from telethon_client import get_recent_posts, client as telethon_client
 
 # === 7️⃣ Ініціалізація Telegram-бота ===
 bot = Bot(token=BOT_TOKEN)
@@ -1999,11 +1993,6 @@ async def run_bot():
         await shutdown()
         
 # === KEEP-ALIVE СЕРВЕР ДЛЯ RENDER ===
-import os
-import asyncio
-import logging
-from aiohttp import web
-
 # [1] Проста функція, щоб перевірити, що бот "живий"
 async def handle(request):
     return web.Response(text="✅ VVNewsDigestBot is running", content_type="text/plain")
@@ -2038,10 +2027,6 @@ async def start_keep_alive_server():
 # [3] Якщо бот працює на Render — запускаємо keep-alive у фоновому потоці
 if __name__ == "__main__":
     pass
-
-import asyncio
-import logging
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 async def main():
     if str(RUN_MODE).lower() == "render":
