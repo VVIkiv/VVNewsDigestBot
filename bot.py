@@ -42,7 +42,7 @@ import hashlib
 
 # 1. Очищення папки media
 
-def cleanup_media_folder(folder_path="media", max_age_hours=24):
+def cleanup_media_folder(folder_path="media", max_age_hours=48):
     """Видаляє файли з папки media, яким більше max_age_hours годин."""
     now = datetime.now().timestamp()
     removed = 0
@@ -84,7 +84,7 @@ logger = logging.getLogger(__name__)
 logger.info(f"🚀 VVNewsDigestBot запущено у режимі: {RUN_MODE.upper()}")
 logger.info(f"📦 Використовується база: {os.path.abspath(DB_PATH)}")
 
-from telethon_client import get_recent_posts, client as telethon_client
+from telethon_client import get_recent_posts, client as telethon_client, ensure_connected
 
 # Використовуємо спільний Telethon клієнт і функції з telethon_client.py
 
@@ -146,6 +146,61 @@ def get_next_digest_time(now: datetime, interval_hours: int) -> datetime:
     while candidate.hour % interval != 0:
         candidate += timedelta(hours=1)
     return candidate
+
+async def download_post_media_items(post: Dict[str, Any]) -> List[str]:
+    """
+    Завантажує всі медіа для поста (в т.ч. альбому) через Telethon.
+    Повертає список шляхів до файлів у папці `media/`.
+    """
+    channel = (post.get("channel") or "").lstrip("@")
+    ids = post.get("ids") or []
+    if not channel or not ids:
+        return []
+
+    os.makedirs("media", exist_ok=True)
+    await ensure_connected()
+
+    # Telethon може повернути повідомлення не в тому ж порядку, тому сортуємо за id
+    message_ids = [int(x) for x in ids]
+    message_ids.sort()
+
+    messages = await telethon_client.get_messages(channel, ids=message_ids)
+    if not messages:
+        return []
+    if not isinstance(messages, list):
+        messages = [messages]
+
+    media_paths: List[str] = []
+    for msg in messages:
+        if not msg or not getattr(msg, "media", None):
+            continue
+        base = os.path.join("media", f"{channel}_{int(msg.id)}")
+        try:
+            downloaded = await telethon_client.download_media(msg, file=base)
+            if downloaded and os.path.exists(downloaded) and os.path.getsize(downloaded) > 0:
+                media_paths.append(downloaded)
+        except Exception as e:
+            logging.error(f"Не вдалося завантажити медіа {channel}/{getattr(msg,'id',None)}: {e}")
+
+    return media_paths
+
+def build_input_media_group(media_paths: List[str], caption: str) -> List[Union[InputMediaPhoto, InputMediaVideo]]:
+    """
+    Формує media group для Telegram (підтримуються тільки фото/відео).
+    Caption додаємо лише до першого елемента.
+    """
+    group: List[Union[InputMediaPhoto, InputMediaVideo]] = []
+    for idx, p in enumerate(media_paths):
+        ext = os.path.splitext(p)[1].lower()
+        file = FSInputFile(p)
+        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
+            group.append(InputMediaPhoto(media=file, caption=caption if idx == 0 else None, parse_mode="MarkdownV2"))
+        elif ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]:
+            group.append(InputMediaVideo(media=file, caption=caption if idx == 0 else None, parse_mode="MarkdownV2"))
+        else:
+            # Документи не підтримуються в media group, пропускаємо
+            continue
+    return group
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler(timezone=LOCAL_TIMEZONE)
@@ -990,38 +1045,38 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
                 
                 post_text = f"🔹 {escaped_text}\n\n"
                 post_text += f"🔗 [       Читати повністю    Читати повністю   Читати повністю                        ]({post_url})\n\n\n"
-                # Если есть медиа, отправляем его с текстом
-                if post['media'] and os.path.exists(post['media']):
+
+                # Якщо це альбом (є ids) — намагаємось надіслати як media group одним "постом"
+                media_paths: List[str] = []
+                if post.get("ids"):
+                    media_paths = await download_post_media_items(post)
+
+                # 1) Альбом з 2+ медіа → send_media_group
+                if len(media_paths) >= 2:
+                    group = build_input_media_group(media_paths, caption=post_text)
+                    if group:
+                        try:
+                            await bot.send_media_group(chat_id=user_id, media=group)
+                            continue
+                        except Exception as e:
+                            logging.error(f"Помилка при відправці альбому (media group): {e}")
+
+                # 2) Якщо є 1 медіа (або не альбом) — відправляємо як одне медіа з підписом
+                single_media = None
+                if media_paths:
+                    single_media = media_paths[0]
+                elif post.get("media"):
+                    single_media = post["media"]
+
+                if single_media and os.path.exists(single_media):
                     try:
-                        if post['media'].endswith(('.mp4', '.avi', '.mov')):
-                            await bot.send_video(
-                                chat_id=user_id,
-                                video=types.FSInputFile(post['media']),
-                                caption=post_text,
-                                parse_mode="MarkdownV2"
-                            )
-                        else:
-                            await bot.send_photo(
-                                chat_id=user_id,
-                                photo=types.FSInputFile(post['media']),
-                                caption=post_text,
-                                parse_mode="MarkdownV2"
-                            )
+                        await send_media_file(user_id, single_media, caption=post_text)
                     except Exception as e:
                         logging.error(f"Помилка при відправці поста з медіа: {e}")
-                        # Если не удалось отправить з медіа, отправляем только текст
-                        await bot.send_message(
-                            chat_id=user_id,
-                            text=post_text,
-                            parse_mode="MarkdownV2"
-                        )
+                        await bot.send_message(chat_id=user_id, text=post_text, parse_mode="MarkdownV2")
                 else:
-                    # Если медиа нет, отправляем только текст
-                    await bot.send_message(
-                        chat_id=user_id,
-                        text=post_text,
-                        parse_mode="MarkdownV2"
-                    )
+                    # Якщо медіа немає — відправляємо тільки текст
+                    await bot.send_message(chat_id=user_id, text=post_text, parse_mode="MarkdownV2")
             except Exception as e:
                 logging.error(f"Помилка при відправці поста: {e}")
                 continue
@@ -1698,7 +1753,7 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
                 chat_id=chat_id,
                 document=input_file,
                 caption=caption,
-                parse_mode="Markdown"
+                parse_mode="MarkdownV2"
             )
         else:
             # Отправляем в зависимости от типа
@@ -1707,21 +1762,21 @@ async def send_media_file(chat_id: int, media_path: str, caption: Optional[str] 
                     chat_id=chat_id,
                     photo=input_file,
                     caption=caption,
-                    parse_mode="Markdown"
+                    parse_mode="MarkdownV2"
                 )
             elif ext in ['.mp4', '.avi', '.mov', '.webm']:
                 await bot.send_video(
                     chat_id=chat_id,
                     video=input_file,
                     caption=caption,
-                    parse_mode="Markdown"
+                    parse_mode="MarkdownV2"
                 )
             else:
                 await bot.send_document(
                     chat_id=chat_id,
                     document=input_file,
                     caption=caption,
-                    parse_mode="Markdown"
+                    parse_mode="MarkdownV2"
                 )
         return True
         
