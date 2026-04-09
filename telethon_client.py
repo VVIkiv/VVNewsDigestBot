@@ -39,25 +39,49 @@ async def get_recent_posts(channel_username: str, limit: int = 5):
     try:
         await ensure_connected()
         result = []
+        grouped: dict[int, dict] = {}
         async for message in client.iter_messages(channel_username, limit=limit):
             if not message:
                 continue
             # Використовуємо raw_text, щоб гарантовано отримати підпис до медіа/повний текст
             text = getattr(message, 'raw_text', None) or getattr(message, 'message', None) or ""
-            media_path = None
 
             # Пропускаємо завантаження медіа на етапі збору (щоб не блокувати дайджест)
-            # Можна буде завантажувати точково під час надсилання, якщо потрібно
             media_path = None
 
-            result.append({
-                "id": message.id,
-                "text": text.strip(),
-                "date": message.date,
-                "url": f"https://t.me/{channel_username}/{message.id}",
-                "media": media_path,
-                "channel": channel_username
-            })
+            # Якщо це альбом (media group) — у Telethon буде grouped_id.
+            # Збираємо всі частини альбому в один логічний "пост".
+            grouped_id = getattr(message, "grouped_id", None)
+            group_key = int(grouped_id) if grouped_id else int(message.id)
+
+            if group_key not in grouped:
+                grouped[group_key] = {
+                    "id": group_key,  # стабільний id для альбому (grouped_id) або message.id
+                    "ids": [int(message.id)],
+                    "text": text.strip(),
+                    "date": message.date,
+                    "url": f"https://t.me/{channel_username}/{message.id}",
+                    "urls": [f"https://t.me/{channel_username}/{message.id}"],
+                    "media": media_path,
+                    "media_items": [],  # на майбутнє: список медіа
+                    "channel": channel_username,
+                }
+            else:
+                grouped[group_key]["ids"].append(int(message.id))
+                grouped[group_key]["urls"].append(f"https://t.me/{channel_username}/{message.id}")
+
+                # Для альбому текст часто є тільки в одному повідомленні (caption).
+                # Беремо найдовший ненульовий текст як основний.
+                current_text = grouped[group_key].get("text", "") or ""
+                candidate_text = text.strip()
+                if candidate_text and len(candidate_text) > len(current_text):
+                    grouped[group_key]["text"] = candidate_text
+                    grouped[group_key]["url"] = f"https://t.me/{channel_username}/{message.id}"
+
+        # Перетворюємо згруповані записи в список
+        result = list(grouped.values())
+        # Сортуємо (про всяк випадок), бо альбоми могли оновлюватися неочікувано
+        result.sort(key=lambda x: x["date"], reverse=True)
         return result
 
     except FloodWaitError as e:
