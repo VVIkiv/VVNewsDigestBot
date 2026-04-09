@@ -876,6 +876,34 @@ def create_post_hash(
     content = "|".join(hash_parts) or (url or f"{channel}:{date}" if (channel or date) else "empty")
     return hashlib.md5(content.encode("utf-8")).hexdigest()
 
+def is_post_already_sent(user_id: int, post: Dict[str, Any], post_hash: str) -> bool:
+    """
+    Перевіряє, чи пост уже надсилався.
+    Має backward-compatible перевірку для альбомів:
+    якщо раніше пост зберігався як окремі message_id, не надсилати його повторно.
+    """
+    if is_post_sent(user_id, post_hash):
+        return True
+
+    ids = post.get("ids") or []
+    if ids:
+        for mid in ids:
+            try:
+                legacy_hash = create_post_hash(
+                    text=post.get("text"),
+                    channel=post.get("channel"),
+                    date=post.get("date"),
+                    media=post.get("media"),
+                    url=post.get("url"),
+                    message_id=int(mid)
+                )
+                if is_post_sent(user_id, legacy_hash):
+                    return True
+            except Exception:
+                continue
+
+    return False
+
 def are_posts_similar(text1: str, text2: str) -> bool:
     """Проверяет схожесть двух текстов"""
     if not text1 or not text2:
@@ -994,7 +1022,7 @@ async def send_digest_to_user(user_id: int, category_id: Optional[int] = None):
                 continue
             seen_hashes.add(post_hash)
 
-            if not is_post_sent(user_id, post_hash):
+            if not is_post_already_sent(user_id, post, post_hash):
                 post['digest_hash'] = post_hash
                 processed_posts.append(post)
                 new_posts_count += 1
